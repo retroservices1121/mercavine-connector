@@ -26,6 +26,7 @@ export default function HomePage() {
             <Link href="/login" className="inline-flex h-12 items-center rounded-full bg-[var(--vine)] px-6 text-[#f4efe4]">
               Sign in to review a purchase
             </Link>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API route, not a page */}
             <a href="/api/health" className="inline-flex h-12 items-center rounded-full border border-[var(--line)] px-6">
               API health
             </a>
