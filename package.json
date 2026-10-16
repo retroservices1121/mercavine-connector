@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack -H 0.0.0.0 -p 4317",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p 4317",
+    "start": "next start -H 0.0.0.0 -p ${PORT:-4317}",
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -38,5 +38,8 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
