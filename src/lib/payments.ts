@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { nowIso } from "./clock";
 import { config, sellerStripeAccount } from "./config";
+import { ApiError } from "./errors";
 import { newId } from "./ids";
 import { platformFeeCents } from "./money";
 import { run } from "./sql";
@@ -107,7 +108,11 @@ export function mockSettle(db: DatabaseSync, cartId: string, charges: SellerChar
 
 export async function stripeSettle(db: DatabaseSync, cartId: string, botId: string, charges: SellerCharge[]): Promise<SettleResult> {
   const key = config().stripeSecretKey;
-  if (!key) return mockSettle(db, cartId, charges);
+  // Fail closed: Stripe mode never silently settles in mock.
+  if (!key) throw new ApiError(503, "payments_unavailable", "Payments are temporarily unavailable. Nothing was charged.");
+  if (charges.some((c) => !c.stripeAccountId || c.stripeAccountId.startsWith("acct_mock"))) {
+    throw new ApiError(422, "seller_unavailable", "A seller in this cart can't accept payments right now. Nothing was charged.");
+  }
   const Stripe = (await import("stripe")).default;
   const stripe = new Stripe(key);
   const paymentMethod = process.env.STRIPE_TEST_PAYMENT_METHOD?.trim() || "pm_card_visa";

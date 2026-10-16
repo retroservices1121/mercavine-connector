@@ -22,6 +22,8 @@ export type AppConfig = {
   allowDevStepUp: boolean;
   devTools: boolean;
   stripeSecretKey: string | null;
+  stripeLivemode: boolean;
+  sampleCatalog: boolean;
   stripeWebhookSecret: string | null;
   paymentMode: PaymentMode;
   shopifyCatalogEnabled: boolean;
@@ -86,7 +88,16 @@ function intEnv(name: string, fallback: number): number {
 
 export function config(): AppConfig {
   const stripe = process.env.STRIPE_SECRET_KEY?.trim() ?? "";
-  const paymentMode: PaymentMode = stripe.startsWith("sk_") ? "stripe" : "mock";
+  // Secret (sk_) or restricted (rk_) keys are both accepted.
+  const stripeKey = /^(sk|rk)_(live|test)_/.test(stripe) ? stripe : null;
+  // PAYMENT_MODE=live forces Stripe and never falls back to mock: without a key, payments fail closed.
+  // PAYMENT_MODE=mock forces mock. Unset: Stripe when a key is present, otherwise mock.
+  const requestedMode = (process.env.PAYMENT_MODE ?? "").trim().toLowerCase();
+  const paymentMode: PaymentMode =
+    requestedMode === "live" || requestedMode === "stripe" ? "stripe" : requestedMode === "mock" ? "mock" : stripeKey ? "stripe" : "mock";
+  // Sample-catalog sellers have no real Stripe accounts, so they are hidden outside mock mode unless forced on.
+  const sampleEnv = (process.env.MERCAVINE_SAMPLE_CATALOG ?? "").trim();
+  const sampleCatalog = sampleEnv ? sampleEnv !== "0" && sampleEnv !== "false" : paymentMode === "mock";
   const publicBaseUrl = (process.env.PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:4317").replace(
     /\/$/,
     "",
@@ -117,7 +128,9 @@ export function config(): AppConfig {
     requireSignatures: process.env.MERCAVINE_REQUIRE_SIGNATURES === "true",
     allowDevStepUp: process.env.MERCAVINE_ALLOW_DEV_STEP_UP !== "false",
     devTools: process.env.MERCAVINE_DEV_TOOLS !== "false",
-    stripeSecretKey: stripe.startsWith("sk_") ? stripe : null,
+    stripeSecretKey: stripeKey,
+    stripeLivemode: Boolean(stripeKey?.includes("_live_")),
+    sampleCatalog,
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || null,
     paymentMode,
     shopifyCatalogEnabled: process.env.SHOPIFY_CATALOG_ENABLED === "true",
