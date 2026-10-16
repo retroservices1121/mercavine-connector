@@ -29,6 +29,12 @@ export default function TermsPage() {
           </p>
           <h2 className="text-2xl">What we don&apos;t sell</h2>
           <p>Firearms, hazardous materials, and other regulated goods aren&apos;t allowed. We&apos;re starting with home improvement, tools, and electronics accessories, plus camping and outdoor gear.</p>
+          <h2 className="text-2xl">Digital downloads</h2>
+          <p>
+            Digital items are delivered by a private download link emailed after payment. Each link expires after 72 hours and works a limited number of times.
+            Because a file can&apos;t be given back, digital items can&apos;t be returned once downloaded. Before the first download you can ask the seller to cancel.
+            If an order is refunded or disputed, its download link stops working.
+          </p>
           <h2 className="text-2xl">Shopify and Shop Pay</h2>
           <p>
             Some products come from Shopify stores and are paid on that store&apos;s own checkout. When you pay with Shop Pay, you approve each purchase in Shop Pay and your card details are not stored by {cfg.brandName}.

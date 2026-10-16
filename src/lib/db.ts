@@ -1,3 +1,4 @@
+import { ensureDigitalTables } from "./digital-schema";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -473,6 +474,7 @@ function migrate(db: DatabaseSync): void {
   addColumn(db, "orders", "fulfillment_type", "TEXT NOT NULL DEFAULT 'physical'");
   // Tax region for carts with no shipping address (all-digital). Two-letter US state code.
   addColumn(db, "users", "billing_region", "TEXT");
+  ensureDigitalTables(db);
   db.exec(`CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, received_at TEXT NOT NULL)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sellers_user ON sellers(user_id)`);
 }

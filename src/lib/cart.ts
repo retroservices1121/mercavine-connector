@@ -12,6 +12,7 @@ import { ApiError } from "./errors";
 import { mintApprovalSecret, newId, sha256 } from "./ids";
 import { withIdempotency, type IdemResult } from "./idempotency";
 import { US_REGION_CODES } from "./regions";
+import { deliverDigitalSafely } from "./digital";
 import { applicationFee, feePercentLabel, money, taxBpsForRegion, taxCents } from "./money";
 import { applyIntentStatus, buildCharge, captureIfReady, createCardIntents, mockSettle, settleCharges, stripeCardClient, type PendingCardIntent, type SellerCharge } from "./payments";
 import { assertBotSafe } from "./redact";
@@ -844,6 +845,14 @@ export function submitCart(input: {
     if (cart.lane === "shop_pay") return submitShopPay(db, cart, input);
     if (cart.status !== "draft") throw new ApiError(409, "invalid_state", "Only a draft cart can be submitted.", { status: cart.status });
     assertAddressIfNeeded(db, cart.id);
+    const missingFile = one<{ title: string }>(
+      db,
+      `SELECT cl.title FROM cart_lines cl JOIN offers f ON f.id = cl.offer_id
+       WHERE cl.cart_id = ? AND cl.fulfillment_type = 'digital' AND cl.status != 'unavailable'
+         AND NOT EXISTS (SELECT 1 FROM digital_assets a WHERE a.product_id = f.product_id)`,
+      cart.id,
+    );
+    if (missingFile) throw new ApiError(422, "digital_file_missing", `${missingFile.title} has no file to deliver yet.`);
     const current = linesOf(db, cart.id).filter((line) => line.provider === "native" && line.offer_id);
     const priceChanges: { line_id: string; offer_id: string; quoted_price: number; new_price: number }[] = [];
     const stockProblems: { line_id: string; offer_id: string; requested_qty: number; available_qty: number }[] = [];
@@ -1162,6 +1171,8 @@ function autoApprove(db: DatabaseSync, cartId: string, bot: BotRecord, approvalU
   }
   emit(db, { type: "cart.approved", userId: bot.user_id, botId: bot.id, cartId, actorType: "system", data: { cart_id: cartId, decided_by: `auto_rule:${rule?.id}` } });
   const paid = finalizePaid(db, cartId, "auto_rule", `auto_rule:${rule?.id ?? "unknown"}`);
+  // Runs after the surrounding transaction commits.
+  setImmediate(() => void deliverDigitalSafely(cartId));
   notify(db, bot.user_id, "inapp", `${paid.bot_name} bought this order`, "Auto-approve matched your rule. You can cancel until the seller accepts.");
   return { ...paid, approval_url: null, auto_approved: true, expires_at: null };
 }
@@ -1478,7 +1489,7 @@ export async function approveCart(input: {
   }
   const failSeller = config().paymentMode === "mock" ? input.failSellerId : undefined;
   const settled = await settleCharges(getDb(), prepared.cartId, prepared.botId, prepared.charges, failSeller);
-  return transaction((db) => {
+  const outcome = transaction((db) => {
     if (!settled.ok) {
       const cart = mustCart(db, prepared.cartId);
       const remain = cart.lock_expires_at ? Date.parse(cart.lock_expires_at) - now().getTime() : 0;
@@ -1502,6 +1513,8 @@ export async function approveCart(input: {
     const paid = finalizePaid(db, prepared.cartId, input.method, input.userId);
     return { paid: true as const, cart: toHumanCart(db, prepared.cartId), bot: paid };
   });
+  if (outcome.paid) await deliverDigitalSafely(prepared.cartId);
+  return outcome;
 }
 
 function cardPayload(intents: PendingCardIntent[]) {
@@ -1553,11 +1566,14 @@ export async function settleCardCart(cartId: string): Promise<boolean> {
   if (cart.status === "paid") return true;
   if (cart.status !== "approved") return false;
   if (!(await captureIfReady(db, cartId))) return false;
-  return transaction((tx) => {
-    if (mustCart(tx, cartId).status !== "approved") return true;
+  const finalized = transaction((tx) => {
+    if (mustCart(tx, cartId).status !== "approved") return false;
     finalizePaid(tx, cartId, cart.approval_method ?? "card", cart.decided_by ?? cart.user_id);
     return true;
   });
+  // Digital delivery runs once, after the paid transition commits. Idempotent per order and file.
+  if (finalized) await deliverDigitalSafely(cartId);
+  return true;
 }
 
 /** Webhook: a card was declined. The Payment Element can retry the same intent; the bot is told. */

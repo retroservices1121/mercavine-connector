@@ -1,3 +1,4 @@
+import { assetForProduct, saveDigitalAsset } from "./digital";
 import type { DatabaseSync } from "node:sqlite";
 import { createUser, signupRateLimit } from "./accounts";
 import { categoryLabels } from "./catalog";
@@ -343,6 +344,7 @@ export type SellerProduct = {
   stock: number;
   image_url: string | null;
   fulfillment_type: FulfillmentType;
+  digital_file: { filename: string; size_bytes: number; sha256: string } | null;
 };
 
 export type FulfillmentType = "physical" | "digital";
@@ -381,7 +383,10 @@ export function listSellerProducts(userId: string): SellerProduct[] {
     `SELECT p.id AS product_id, o.id AS offer_id, p.title, p.description, p.category, o.price_cents, o.stock, p.image_url, o.fulfillment_type
      FROM products p JOIN offers o ON o.product_id = p.id WHERE p.seller_id = ? ORDER BY p.created_at DESC`,
     seller.id,
-  ).map((row) => ({ ...row }));
+  ).map((row) => {
+    const file = row.fulfillment_type === "digital" ? assetForProduct(row.product_id) : null;
+    return { ...row, digital_file: file ? { filename: file.filename, size_bytes: file.size_bytes, sha256: file.sha256 } : null };
+  });
 }
 
 export function createSellerProduct(userId: string, input: Record<string, unknown>): SellerProduct {
@@ -422,4 +427,10 @@ export function updateSellerProduct(userId: string, productId: string, input: Re
     }
   });
   return listSellerProducts(userId).find((p) => p.product_id === productId)!;
+}
+
+/** Upload the file a buyer receives for a digital listing. */
+export function uploadSellerProductFile(userId: string, productId: string, file: { name: string; bytes: Uint8Array }) {
+  const seller = requireSeller(userId);
+  return saveDigitalAsset({ sellerId: seller.id, productId, filename: file.name, bytes: file.bytes });
 }
