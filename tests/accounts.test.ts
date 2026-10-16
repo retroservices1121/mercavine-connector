@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetSignupRateLimits, SIGNUP_LIMIT_PER_HOUR } from "../src/lib/accounts";
 import { handleApi } from "../src/lib/api";
+import { verifyEmail } from "../src/lib/email-auth";
+import { mailOutbox } from "../src/lib/mailer";
 import { getDb } from "../src/lib/db";
 import { sha256 } from "../src/lib/ids";
 import { useTempDb } from "./db";
@@ -98,6 +100,12 @@ describe("accounts", () => {
     expect((await handleApi(new Request(`${base}/api/v1/orders`, { headers: auth }))).status).toBe(403);
 
     const cart = { lines: [{ offer_id: "ofr_brass_hinge", quantity: 1 }] };
+    const unverified = await post("/api/v1/carts", cart, { ...auth, "idempotency-key": "acct-cart-0" });
+    expect(unverified.status).toBe(403);
+    expect(((await unverified.json()) as { error: { code: string } }).error.code).toBe("email_unverified");
+    const link = mailOutbox().find((m) => m.to === "bot@example.com" && m.tag === "verify_email")!.text.match(/token=([\w-]+)/)![1];
+    verifyEmail(link);
+
     const noAddr = await post("/api/v1/carts", cart, { ...auth, "idempotency-key": "acct-cart-1" });
     expect(noAddr.status).toBe(422);
     expect(((await noAddr.json()) as { error: { code: string } }).error.code).toBe("address_required");

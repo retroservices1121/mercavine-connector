@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { userFromSessionToken } from "@/lib/auth";
+import { isEmailVerified } from "@/lib/email-auth";
+import { VerifyBanner } from "./verify-banner";
 import { humanOrders, notificationsFor } from "@/lib/cart";
 import { config } from "@/lib/config";
 import { getDb } from "@/lib/db";
@@ -32,6 +34,7 @@ export default async function AccountPage() {
       <SiteHeader signedIn />
       <section className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-4xl">{user.display_name}&apos;s account</h1>
+        {isEmailVerified(user.id) ? null : <VerifyBanner email={user.email} />}
         <p className="mt-2 text-sm text-[var(--muted)]">{user.email}. Connector access is free. Sellers pay {feePercentLabel(cfg.platformFeeBps)}.</p>
         <p className="mt-2 flex flex-wrap gap-4 text-sm"><Link href="/account/bots" className="underline">Connect your bot</Link><Link href="/account/addresses" className="underline">Shipping addresses</Link><Link href="/sellers" className="underline">Amazon seller accounts</Link></p>
         {cfg.shopPayEnabled ? <ShopLinkPanel status={shopLinkPublic(user.id)} /> : null}
