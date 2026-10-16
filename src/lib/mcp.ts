@@ -3,7 +3,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { botByToken, type BotRecord } from "./auth";
+import { botById, botByToken, type BotRecord } from "./auth";
+import { botForMcpToken, mcpChallenge } from "./oauth";
 import { cancelCart, createCart, getCartForBot, submitCart, updateCart, type LineInput } from "./cart";
 import { config } from "./config";
 import { ApiError, errorBody } from "./errors";
@@ -18,9 +19,11 @@ function header(extra: RequestHandlerExtra<ServerRequest, ServerNotification>, n
 }
 
 function botFromExtra(extra: RequestHandlerExtra<ServerRequest, ServerNotification>, scope: string): BotRecord {
+  // handleMcp already resolved the bearer (OAuth access token or legacy bot token) into a bot.
+  const resolved = extra.authInfo?.clientId ? botById(extra.authInfo.clientId) : undefined;
   const token = (extra.authInfo?.token || header(extra, "authorization").replace(/^Bearer\s+/i, "")).trim();
-  if (!token) throw new ApiError(401, "unauthorized", "Send Authorization: Bearer <bot token>.");
-  const bot = botByToken(token);
+  if (!resolved && !token) throw new ApiError(401, "unauthorized", "Send Authorization: Bearer <bot token>.");
+  const bot = resolved ? { ...resolved, scopes: extra.authInfo?.scopes ?? resolved.scopes } : botByToken(token);
   if (!bot) throw new ApiError(401, "unauthorized", "Unknown bot token.");
   if (bot.revoked_at) throw new ApiError(401, "bot_revoked", "This bot was revoked.");
   if (!bot.scopes.includes(scope)) throw new ApiError(403, "scope_missing", `Missing scope ${scope}.`, { scope });
@@ -334,12 +337,18 @@ export function createMcpServer() {
 }
 
 export async function handleMcp(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-allow-headers": "authorization, content-type, mcp-protocol-version, mcp-session-id", "access-control-expose-headers": "www-authenticate, mcp-session-id" } });
+  }
+  // Every MCP request, including initialize, needs a bearer: OAuth access token or legacy bot token.
+  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return mcpChallenge();
+  const bot = botForMcpToken(token);
+  if (!bot) return mcpChallenge("invalid_token");
   const server = createMcpServer();
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
-  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  const bot = token ? botByToken(token) : undefined;
   return transport.handleRequest(req, {
-    authInfo: bot ? { token, clientId: bot.id, scopes: bot.scopes } : undefined,
+    authInfo: { token, clientId: bot.id, scopes: bot.scopes },
   });
 }

@@ -10,3 +10,4 @@ async function route(req: Request) {
 export const GET = route;
 export const POST = route;
 export const DELETE = route;
+export const OPTIONS = route;
