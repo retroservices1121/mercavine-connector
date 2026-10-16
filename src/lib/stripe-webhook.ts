@@ -69,6 +69,11 @@ export async function handleStripeEvent(event: Evt, deps: Deps): Promise<{ dupli
         if (pi) {
           const full = obj.refunded === true || (typeof obj.amount_refunded === "number" && obj.amount_refunded >= (obj.amount as number));
           db.prepare(`UPDATE orders SET payment_status = ?, updated_at = ? WHERE stripe_payment_intent_id = ?`).run(full ? "refunded" : "partially_refunded", nowIso(), pi);
+          if (full) {
+            // Mercavine Store: reverse the Stripe Tax transaction. Partial refunds need a manual line-level reversal.
+            const { reverseTaxForPaymentIntent } = await import("./cj-store");
+            try { await reverseTaxForPaymentIntent(pi); } catch (e) { console.error("tax reversal failed", (e as Error).message); }
+          }
         }
         return { handled: type };
       }
