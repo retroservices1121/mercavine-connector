@@ -34,3 +34,14 @@ Until those credentials exist, leave the flag off or use mock mode. Sandbox host
 Prime enrollment is not read from Amazon. Set `prime_enrolled` only after you know the seller is enrolled.
 
 Self-authorization (the seller authorizing their own draft app) is enough to develop. Other sellers require Amazon to approve the app and the roles above.
+
+## Credential encryption at rest
+
+Amazon LWA refresh tokens (and Shop access tokens / device codes) are encrypted
+with AES-256-GCM before they are written to SQLite (`src/lib/token-crypto.ts`).
+
+- Set `TOKEN_ENCRYPTION_KEY` to 32 random bytes: `openssl rand -base64 32`.
+- Without the key, storing a new token fails closed with HTTP 503.
+- On startup, any legacy plaintext tokens are encrypted in place.
+- Losing the key makes stored tokens unreadable; sellers would need to reconnect.
+  Keep a copy in a password manager, separate from database backups.

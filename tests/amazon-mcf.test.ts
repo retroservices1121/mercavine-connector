@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { completeAmazonOAuth, connectAmazonSeller, setPrimeEnrolled } from "../src/lib/amazon-mcf";
+import { amazonRefreshToken, completeAmazonOAuth, connectAmazonSeller, setPrimeEnrolled } from "../src/lib/amazon-mcf";
 import { botByToken } from "../src/lib/auth";
 import { approveCart, createCart, submitCart, type LineInput } from "../src/lib/cart";
 import { getNativeProduct } from "../src/lib/catalog";
@@ -84,7 +84,9 @@ describe("amazon mcf", () => {
       const stored = getDb().prepare(`SELECT refresh_token FROM amazon_seller_links WHERE seller_id = ?`).get("sel_hinge") as {
         refresh_token: string;
       };
-      expect(stored.refresh_token.startsWith("Atzr|mock|")).toBe(true);
+      expect(stored.refresh_token.startsWith("enc:v1:")).toBe(true);
+      expect(stored.refresh_token).not.toContain("Atzr");
+      expect(amazonRefreshToken("sel_hinge")?.startsWith("Atzr|mock|")).toBe(true);
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
@@ -205,7 +207,8 @@ describe("amazon mcf", () => {
         refresh_token: string;
         oauth_state: string | null;
       };
-      expect(stored.refresh_token).toBe("Atzr|live-example");
+      expect(stored.refresh_token.startsWith("enc:v1:")).toBe(true);
+      expect(amazonRefreshToken("sel_hinge")).toBe("Atzr|live-example");
       expect(stored.oauth_state).toBeNull();
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const [url, init] = fetchSpy.mock.calls[0];

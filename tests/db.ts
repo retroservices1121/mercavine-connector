@@ -42,6 +42,7 @@ export function useTempDb() {
     delete process.env.AMAZON_MARKETPLACE_ID;
     process.env.MERCAVINE_REQUIRE_SIGNATURES = "false";
     process.env.MERCAVINE_DEV_TOOLS = "true";
+    process.env.TOKEN_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
     setNow(null);
     resetRateLimits();
     clearMemoryWebhooks();

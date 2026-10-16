@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "./config";
 import { purgeDemoIdentities, seedIfEmpty } from "./seed";
+import { encryptLegacyTokens } from "./token-crypto";
 
 type Cache = { db: DatabaseSync; path: string };
 const g = globalThis as unknown as { __mercavineDb?: Cache };
@@ -567,6 +568,7 @@ export function getDb(): DatabaseSync {
   migrate(db);
   seedIfEmpty(db);
   purgeDemoIdentities(db);
+  encryptLegacyTokens(db);
   g.__mercavineDb = { db, path };
   return db;
 }
