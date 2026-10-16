@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { listBots } from "@/lib/accounts";
 import { userFromSessionToken } from "@/lib/auth";
+import { isEmailVerified } from "@/lib/email-auth";
+import { VerifyBanner } from "../verify-banner";
 import { config } from "@/lib/config";
 import { formatUsd } from "@/lib/money";
 import { AccountActions } from "../account-actions";
@@ -23,6 +25,7 @@ export default async function BotsPage() {
       <section className="mx-auto max-w-3xl px-5 py-8">
         <p className="text-sm"><Link href="/account" className="underline">← Account</Link></p>
         <h1 className="mt-2 text-4xl">Connect your bot</h1>
+        {isEmailVerified(user.id) ? null : <VerifyBanner email={user.email} />}
         <div className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5">
           <ConnectBotForm mcpUrl={mcpUrl} />
         </div>

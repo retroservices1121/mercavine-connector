@@ -19,7 +19,9 @@ App, REST API, and MCP server: http://127.0.0.1:4317
 - Health: `GET /api/health`
 - Bot API: `/api/v1/...` with `Authorization: Bearer <token>`
 - Shopper accounts: `/signup` (`POST /api/v1/users`), addresses at `/account/addresses` (`/api/v1/addresses`), bot tokens at `/account/bots` (`POST /api/v1/bots`, scope groups `shop`, `checkout`, `track`)
-- Email verification is not implemented yet (`users.email_verified` stays 0)
+- Email verification: sign-up emails a 24h single-use link to `/verify`. Checkout (bot cart create/submit and web approval) returns `email_unverified` until verified. Resend: `POST /api/v1/users/verify/resend`.
+- Password reset: `/forgot-password` (`POST /api/v1/password/forgot`, always a generic 200) and `/reset-password` (`POST /api/v1/password/reset`, 1h single-use token; signs out all sessions; bot tokens stay active).
+- Email delivery needs `RESEND_API_KEY` (from `no-reply@mercavine.com`, reply-to `privacy@mercavine.com`). Without it, production logs a warning and sends nothing.
 - MCP: `POST /mcp` (streamable HTTP, stateless, JSON responses)
 - Approval page: `/a/<token>`
 - Seller Amazon connection: `/sellers` (off unless `AMAZON_MCF_ENABLED=true`)
