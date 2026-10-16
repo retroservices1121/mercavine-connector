@@ -1,3 +1,4 @@
+import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
 import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, type LineInput } from "./cart";
@@ -117,6 +118,43 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
       user.id,
     );
     return cors(200, { user, bots, orders: humanOrders(user.id), notifications: notificationsFor(user.id), brand: brandSnapshot() });
+  }
+  if (parts[0] === "users" && parts.length === 1 && method === "POST") {
+    assertSameOrigin(req);
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+    signupRateLimit(ip);
+    const { json } = await readJson(req);
+    const created = createUser({ email: json.email, password: json.password, name: json.name });
+    const session = login(created.email, String(json.password ?? ""));
+    return cors(201, { user: session.user, email_verified: false }, { "set-cookie": sessionCookie(session.token) });
+  }
+  if (parts[0] === "bots" && parts.length === 1 && method === "GET") {
+    const user = requireUser(req);
+    return cors(200, { bots: listBots(user.id) });
+  }
+  if (parts[0] === "bots" && parts.length === 1 && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    const { json } = await readJson(req);
+    return cors(201, createBot(user.id, json), { "cache-control": "no-store" });
+  }
+  if (parts[0] === "addresses") {
+    const user = requireUser(req);
+    if (method === "GET" && parts.length === 1) return cors(200, { addresses: listAddresses(user.id) });
+    assertSameOrigin(req);
+    if (method === "POST" && parts.length === 1) {
+      const { json } = await readJson(req);
+      return cors(201, createAddress(user.id, json));
+    }
+    if (method === "PATCH" && parts.length === 2) {
+      const { json } = await readJson(req);
+      return cors(200, updateAddress(user.id, parts[1], json));
+    }
+    if (method === "DELETE" && parts.length === 2) {
+      deleteAddress(user.id, parts[1]);
+      return cors(204, null);
+    }
+    throw new ApiError(405, "method_not_allowed", "Unsupported address operation.");
   }
   if (parts[0] === "bots" && parts[2] === "revoke" && method === "POST") {
     assertSameOrigin(req);

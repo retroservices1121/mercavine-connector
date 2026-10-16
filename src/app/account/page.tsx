@@ -33,7 +33,7 @@ export default async function AccountPage() {
       <section className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-4xl">{user.display_name}&apos;s account</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">{user.email}. Connector access is free. Sellers pay {feePercentLabel(cfg.platformFeeBps)}.</p>
-        <p className="mt-2 text-sm"><Link href="/sellers" className="underline">Amazon seller accounts</Link></p>
+        <p className="mt-2 flex flex-wrap gap-4 text-sm"><Link href="/account/bots" className="underline">Connect your bot</Link><Link href="/account/addresses" className="underline">Shipping addresses</Link><Link href="/sellers" className="underline">Amazon seller accounts</Link></p>
         {cfg.shopPayEnabled ? <ShopLinkPanel status={shopLinkPublic(user.id)} /> : null}
         {bots.map((bot) => (
           <article key={bot.id} className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5">

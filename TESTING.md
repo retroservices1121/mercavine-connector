@@ -73,3 +73,10 @@ Submit that cart, open the approval URL, and choose **Approve for Shop Pay**. Th
 Passkeys: after sign-in, **Enroll a passkey** on `/account`. Later approvals prompt for it. Dev step-up is skipped once a passkey exists.
 
 Contact for this listing: Joe Perez, CEO, mercavine-outreach@mail.grokbot.com. There is no website URL yet.
+
+## Production review flow (no demo data)
+
+1. Open https://mercavine.com/signup (or the Railway URL until the custom domain is attached) and create an account. Password: at least 10 characters. You are signed in right away. Email verification is not implemented yet.
+2. Add a shipping address at `/account/addresses`. Checkout uses the default address and returns `address_required` without one.
+3. Connect a bot at `/account/bots`. Pick scopes (`shop`, `checkout`, `track`), optional limits, and an optional Ed25519 public key. Copy the token; it is shown once.
+4. Point the bot at `https://mercavine.com/mcp` with `Authorization: Bearer <token>`. `get_order_status` and `list_orders` need the `track` scope.

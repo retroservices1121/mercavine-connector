@@ -16,7 +16,7 @@ Please grant Mercavine permission to use in-bot `complete_checkout` for Catalog 
 
 The connector is free to users. Our own sellers, separate from Shopify, pay a 3% application fee via Stripe Connect direct charges. That fee does not apply to Shopify handoff orders.
 
-There is no public website yet. mercavine.com is the intended domain and has not been purchased. Please reply to mercavine-outreach@mail.grokbot.com.
+Our site is https://mercavine.com (privacy policy at https://mercavine.com/privacy). Please reply to mercavine-outreach@mail.grokbot.com.
 
 Thank you,
 Joe Perez

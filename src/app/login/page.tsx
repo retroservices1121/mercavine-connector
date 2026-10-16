@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { config } from "@/lib/config";
 import { LoginForm } from "./login-form";
@@ -17,6 +18,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <div className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5">
           <LoginForm nextPath={params.next} />
         </div>
+        <p className="mt-4 text-sm">
+          New to {cfg.brandName}? <Link href="/signup" className="underline">Create an account</Link>
+        </p>
       </section>
     </main>
   );
