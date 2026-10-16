@@ -8,3 +8,6 @@ export const accountDeletion = {
   orders: "Order records are kept for tax and dispute purposes.",
   bots: "You can disconnect your bot from your account page at any time, without deleting your account.",
 };
+
+export const PRIVACY_EFFECTIVE_DATE = "October 16, 2026";
+export const PRIVACY_OPERATOR = "Mobi Media Inc., a Florida corporation";

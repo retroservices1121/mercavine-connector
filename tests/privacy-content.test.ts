@@ -17,3 +17,17 @@ describe("privacy account deletion", () => {
     expect(page).toContain("mailto:${PRIVACY_EMAIL}");
   });
 });
+
+describe("privacy page reads as final", () => {
+  const page = readFileSync("src/app/privacy/page.tsx", "utf8");
+  it("has no draft or pending-review wording", () => {
+    expect(page).not.toMatch(/draft|pending|legal review/i);
+  });
+  it("shows effective date and operator", async () => {
+    const m = await import("@/lib/privacy-content");
+    expect(m.PRIVACY_EFFECTIVE_DATE).toBe("October 16, 2026");
+    expect(m.PRIVACY_OPERATOR).toContain("Mobi Media Inc.");
+    expect(page).toContain("{PRIVACY_EFFECTIVE_DATE}");
+    expect(page).toContain("{PRIVACY_OPERATOR}");
+  });
+});
