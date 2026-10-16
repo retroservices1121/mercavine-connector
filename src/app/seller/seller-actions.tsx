@@ -44,7 +44,7 @@ export function StripeRefresher({ enabled }: { enabled: boolean }) {
   return null;
 }
 
-type Product = { product_id: string; title: string; description: string; category: string; price_cents: number; stock: number; image_url: string | null; fulfillment_type?: "physical" | "digital" };
+type Product = { product_id: string; title: string; description: string; category: string; price_cents: number; stock: number; image_url: string | null; fulfillment_type?: "physical" | "digital"; digital_file?: { filename: string; size_bytes: number } | null };
 const select = "flex h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm outline-none focus:border-[var(--vine)]";
 
 export function ProductForm({ categories, product, onDone }: { categories: { slug: string; label: string }[]; product?: Product; onDone?: () => void }) {
@@ -59,11 +59,26 @@ export function ProductForm({ categories, product, onDone }: { categories: { slu
     const { ok, json } = product
       ? await call(`/api/v1/seller/products/${product.product_id}`, "PATCH", { ...body, stock: Number(body.stock) })
       : await call("/api/v1/seller/products", "POST", { ...body, stock: Number(body.stock) });
-    setPending(false);
     if (!ok) {
+      setPending(false);
       setError(json?.error?.message ?? "We couldn't save that product.");
       return;
     }
+    const file = form.get("file");
+    if (body.fulfillment_type === "digital" && file instanceof File && file.size > 0) {
+      const upload = new FormData();
+      upload.append("file", file);
+      const productId = product?.product_id ?? (json as { product_id?: string })?.product_id;
+      const res = await fetch(`/api/v1/seller/products/${productId}/file`, { method: "POST", body: upload });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        setPending(false);
+        setError(err?.error?.message ?? "The listing saved, but the file didn't upload. Try again.");
+        router.refresh();
+        return;
+      }
+    }
+    setPending(false);
     onDone?.();
     router.refresh();
   }
@@ -89,6 +104,14 @@ export function ProductForm({ categories, product, onDone }: { categories: { slu
           <option value="physical">Physical item (ships to the buyer)</option>
           <option value="digital">Digital download (no shipping, no address)</option>
         </select>
+      </div>
+      <div className="space-y-1 sm:col-span-2">
+        <Label htmlFor={`file${p}`}>File for digital downloads</Label>
+        <Input id={`file${p}`} name="file" type="file" accept=".pdf,.epub,.zip,.txt,.csv,.png,.jpg,.jpeg,.mp3,.mp4,.docx,.xlsx,.pptx" />
+        <p className="text-xs text-[var(--muted)]">
+          {product?.digital_file ? `Current file: ${product.digital_file.filename}. Uploading replaces it. ` : ""}
+          Only for Digital download listings. Up to 100 MB. Buyers get a private link after payment.
+        </p>
       </div>
       <div className="space-y-1"><Label htmlFor={`image${p}`}>Image link (optional)</Label><Input id={`image${p}`} name="image_url" type="url" placeholder="https://" defaultValue={product?.image_url ?? ""} /></div>
       {error ? <p role="alert" className="text-sm text-[var(--danger)] sm:col-span-2">{error}</p> : null}

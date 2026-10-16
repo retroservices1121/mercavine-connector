@@ -1,6 +1,7 @@
+import { MAX_ASSET_BYTES } from "./digital";
 import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
-import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
+import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, uploadSellerProductFile, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
 import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, setApprovalBillingRegion, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, cardSession, syncCardPayment, settleCardCart, noteCardFailure, type LineInput } from "./cart";
@@ -346,6 +347,22 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     const user = requireUser(req);
     const { json } = await readJson(req);
     return cors(201, createSellerProduct(user.id, json));
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts.length === 4 && parts[3] === "file" && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    const declared = Number(req.headers.get("content-length") ?? 0);
+    if (declared > MAX_ASSET_BYTES + 1024 * 1024) throw new ApiError(413, "file_too_large", "That file is too large.");
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      throw new ApiError(400, "bad_form", "Send the file as multipart/form-data in a field named file.");
+    }
+    const file = form.get("file");
+    if (!file || typeof file === "string") throw new ApiError(422, "invalid_file", "Choose a file to upload.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return cors(201, uploadSellerProductFile(user.id, parts[2], { name: file.name, bytes }));
   }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 3 && (method === "PATCH" || method === "PUT")) {
     assertSameOrigin(req);

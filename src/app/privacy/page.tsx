@@ -26,7 +26,7 @@ export default function PrivacyPage() {
           <h2 className="text-2xl">What we don&apos;t do</h2>
           <p>We don&apos;t sell your personal information, and shoppers never pay to use {cfg.brandName}.</p>
           <h2 className="text-2xl">How long we keep things</h2>
-          <p>Order records are kept for tax and dispute purposes. You can disconnect your bot from your account page at any time, which also cancels its open carts.</p>
+          <p>Order records are kept for tax and dispute purposes. For digital orders we also keep a log of each download attempt (time and result) to handle refund and dispute questions. You can disconnect your bot from your account page at any time, which also cancels its open carts.</p>
           <h2 className="text-2xl">Contact</h2>
           <p>{cfg.brandName}, <a className="underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
         </article>

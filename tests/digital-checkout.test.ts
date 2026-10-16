@@ -5,6 +5,7 @@ import { approvalDisplay } from "../src/lib/approval-view";
 import { getDb } from "../src/lib/db";
 import { DEV_BOT_TOKEN } from "../src/lib/dev-keys";
 import { listOrders, markDigitalFulfilled } from "../src/lib/orders";
+import { saveDigitalAsset } from "../src/lib/digital";
 import { useTempDb } from "./db";
 
 function bot() {
@@ -26,6 +27,8 @@ type Body = {
 
 function makeDigital(offerId = "ofr_tape") {
   getDb().prepare(`UPDATE offers SET fulfillment_type = 'digital', shipping_cents = 0, eta_min_days = 0, eta_max_days = 0 WHERE id = ?`).run(offerId);
+  const offer = getDb().prepare(`SELECT product_id, seller_id FROM offers WHERE id = ?`).get(offerId) as { product_id: string; seller_id: string };
+  saveDigitalAsset({ sellerId: offer.seller_id, productId: offer.product_id, filename: "guide.pdf", bytes: new TextEncoder().encode("%PDF-1.4 test") });
 }
 function dropAddresses() {
   getDb().prepare(`DELETE FROM addresses WHERE user_id = 'usr_jp'`).run();
