@@ -47,6 +47,13 @@ type SearchRow = {
   held: number;
 };
 
+/** SQL predicate for sellers whose offers shoppers may see and buy. */
+export function sellerVisibleSql(alias = "s"): string {
+  const base = `${alias}.status = 'active'`;
+  if (config().sampleCatalog) return base;
+  return `${base} AND ${alias}.user_id IS NOT NULL AND ${alias}.stripe_charges_enabled = 1 AND ${alias}.stripe_account_id LIKE 'acct_%' AND ${alias}.stripe_account_id NOT LIKE 'acct_mock%'`;
+}
+
 function heldSql() {
   return `COALESCE((SELECT SUM(qty) FROM inventory_reservations r WHERE r.offer_id = o.id AND r.status = 'held' AND r.expires_at > ?), 0)`;
 }
@@ -107,7 +114,7 @@ export function searchNative(query: {
 }): ProductView[] {
   const db = getDb();
   const at = now().toISOString();
-  const clauses = ["s.status = 'active'"];
+  const clauses = [sellerVisibleSql()];
   const params: (string | number)[] = [at];
   if (query.q?.trim()) {
     const like = `%${query.q.trim().toLowerCase()}%`;
@@ -131,7 +138,7 @@ export function searchNative(query: {
 
 export function getNativeProduct(productId: string): ProductView | undefined {
   const at = now().toISOString();
-  const rows = many<SearchRow>(getDb(), `${SELECT} WHERE p.id = ? AND s.status = 'active'`, at, productId);
+  const rows = many<SearchRow>(getDb(), `${SELECT} WHERE p.id = ? AND ${sellerVisibleSql()}`, at, productId);
   return toProduct(rows)[0];
 }
 

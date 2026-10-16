@@ -16,6 +16,8 @@ export function useTempDb() {
     process.env.MERCAVINE_DB_PATH = join(dir, "test.sqlite");
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_WEBHOOK_SECRET;
+    delete process.env.PAYMENT_MODE;
+    delete process.env.MERCAVINE_SAMPLE_CATALOG;
     process.env.PLATFORM_FEE_BPS = "300";
     process.env.PUBLIC_BASE_URL = "http://127.0.0.1:4317";
     process.env.MERCAVINE_ALLOW_DEV_STEP_UP = "true";

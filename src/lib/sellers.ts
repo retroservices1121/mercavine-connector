@@ -92,8 +92,11 @@ async function liveClient(key: string): Promise<StripeOnboardingClient> {
 
 async function stripeClient(): Promise<StripeOnboardingClient> {
   if (override) return override;
-  const key = config().stripeSecretKey;
-  return key ? liveClient(key) : mockClient();
+  const cfg = config();
+  if (cfg.paymentMode === "mock") return mockClient();
+  // Stripe mode: real client only. Fail closed if the key is missing.
+  if (!cfg.stripeSecretKey) throw new ApiError(503, "payments_unavailable", "Payout setup is temporarily unavailable. Please try again later.");
+  return liveClient(cfg.stripeSecretKey);
 }
 
 // ---------- seller signup ----------
@@ -190,6 +193,11 @@ export async function startStripeOnboarding(userId: string): Promise<{ url: stri
   const seller = requireSeller(userId);
   const client = await stripeClient();
   let account = seller.stripe_account_id;
+  // A mock account id from before the switch to live Stripe is discarded.
+  if (account.startsWith("acct_mock") && config().paymentMode !== "mock") {
+    account = "";
+    run(getDb(), `UPDATE sellers SET stripe_account_id = '', stripe_charges_enabled = 0, stripe_payouts_enabled = 0, stripe_details_submitted = 0, status = 'onboarding' WHERE id = ?`, seller.id);
+  }
   if (!account) {
     try {
       account = (await client.createExpressAccount({ email: seller.contact_email ?? "", businessName: seller.name, sellerId: seller.id })).id;
@@ -207,9 +215,22 @@ export async function startStripeOnboarding(userId: string): Promise<{ url: stri
 }
 
 /** Pulls charges/payouts state from Stripe and activates listings once charges are enabled. */
+/** Applies an account state from Stripe (refresh or account.updated webhook). */
+export function applyStripeAccountState(state: StripeAccountState): boolean {
+  const row = one<{ id: string }>(getDb(), `SELECT id FROM sellers WHERE stripe_account_id = ? AND user_id IS NOT NULL`, state.id);
+  if (!row) return false;
+  run(
+    getDb(),
+    `UPDATE sellers SET stripe_charges_enabled = ?, stripe_payouts_enabled = ?, stripe_details_submitted = ?, status = ? WHERE id = ?`,
+    state.charges_enabled ? 1 : 0, state.payouts_enabled ? 1 : 0, state.details_submitted ? 1 : 0, state.charges_enabled ? "active" : "onboarding", row.id,
+  );
+  return true;
+}
+
 export async function refreshStripeStatus(userId: string): Promise<SellerRow> {
   const seller = requireSeller(userId);
   if (!seller.stripe_account_id) return seller;
+  if (seller.stripe_account_id.startsWith("acct_mock") && config().paymentMode !== "mock") return seller;
   let state: StripeAccountState;
   try {
     state = await (await stripeClient()).retrieveAccount(seller.stripe_account_id);

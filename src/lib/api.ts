@@ -1,6 +1,6 @@
 import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
-import { assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
+import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
 import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, type LineInput } from "./cart";
@@ -60,6 +60,9 @@ export async function handleApi(req: Request): Promise<Response> {
         ok: true,
         brand: cfg.brandName,
         payment_mode: cfg.paymentMode,
+        stripe_livemode: cfg.stripeLivemode,
+        payments_ready: cfg.paymentMode === "mock" || Boolean(cfg.stripeSecretKey),
+        stripe_webhook: Boolean(cfg.stripeWebhookSecret),
         fee_bps: cfg.platformFeeBps,
         shop_pay: cfg.shopPayMode,
         shop_catalog: cfg.shopCatalogEnabled,
@@ -491,6 +494,18 @@ async function stripeWebhook(req: Request, raw: string): Promise<Response> {
     throw new ApiError(400, "webhook_unconfigured", "Set STRIPE_WEBHOOK_SECRET to verify Stripe webhooks.");
   }
   const type = event.type ?? "";
+  if (type === "account.updated") {
+    const acct = event.data?.object as { id?: unknown; charges_enabled?: unknown; payouts_enabled?: unknown; details_submitted?: unknown } | undefined;
+    if (acct && typeof acct.id === "string") {
+      applyStripeAccountState({
+        id: acct.id,
+        charges_enabled: acct.charges_enabled === true,
+        payouts_enabled: acct.payouts_enabled === true,
+        details_submitted: acct.details_submitted === true,
+      });
+    }
+    return cors(200, { received: true });
+  }
   const cartId = event.data?.object?.metadata?.cart_id;
   const intentId = event.data?.object?.id;
   if (cartId && intentId && (type === "charge.refunded" || type === "payment_intent.canceled")) {
