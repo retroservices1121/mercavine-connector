@@ -8,8 +8,11 @@ import { VerifyBanner } from "./verify-banner";
 import { humanOrders, notificationsFor } from "@/lib/cart";
 import { config } from "@/lib/config";
 import { getDb } from "@/lib/db";
+import { sellerForUser } from "@/lib/sellers";
+import { showSellerAccountItems } from "@/lib/onboarding";
 import { feePercentLabel, formatUsd } from "@/lib/money";
 import { shopLinkPublic } from "@/lib/shop-pay";
+import { buttonVariants } from "@/components/ui/button";
 import { AccountActions } from "./account-actions";
 import { ShopLinkPanel } from "./shop-link-panel";
 
@@ -20,6 +23,7 @@ export default async function AccountPage() {
   const user = userFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect("/login");
   const cfg = config();
+  const isSeller = showSellerAccountItems(Boolean(sellerForUser(user.id)));
   const bots = getDb().prepare(`SELECT id, name, revoked_at, approval_threshold_cents, per_month_limit_cents FROM bots WHERE user_id = ?`).all(user.id) as {
     id: string;
     name: string;
@@ -35,8 +39,8 @@ export default async function AccountPage() {
       <section className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-4xl">{user.display_name}&apos;s account</h1>
         {isEmailVerified(user.id) ? null : <VerifyBanner email={user.email} />}
-        <p className="mt-2 text-sm text-[var(--muted)]">{user.email}. Connector access is free. Sellers pay {feePercentLabel(cfg.platformFeeBps)}.</p>
-        <p className="mt-2 flex flex-wrap gap-4 text-sm"><Link href="/account/bots" className="underline">Connect your bot</Link><Link href="/account/addresses" className="underline">Shipping addresses</Link><Link href="/sellers" className="underline">Amazon seller accounts</Link></p>
+        <p className="mt-2 text-sm text-[var(--muted)]">{user.email}{isSeller ? <>. Connector access is free. Sellers pay {feePercentLabel(cfg.platformFeeBps)}.</> : null}</p>
+        <nav aria-label="Account" className="mt-4 flex flex-wrap gap-3 text-sm"><Link href="/account/bots" className={buttonVariants({ variant: "outline", className: "h-9 px-4" })}>Connect your bot</Link><Link href="/account/addresses" className={buttonVariants({ variant: "outline", className: "h-9 px-4" })}>Shipping addresses</Link>{isSeller ? <Link href="/sellers" className={buttonVariants({ variant: "outline", className: "h-9 px-4" })}>Amazon seller accounts</Link> : null}</nav>
         {cfg.shopPayEnabled ? <ShopLinkPanel status={shopLinkPublic(user.id)} /> : null}
         {bots.map((bot) => (
           <article key={bot.id} className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5">

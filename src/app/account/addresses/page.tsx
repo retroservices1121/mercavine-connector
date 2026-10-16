@@ -7,13 +7,19 @@ import { userFromSessionToken } from "@/lib/auth";
 import { isEmailVerified } from "@/lib/email-auth";
 import { VerifyBanner } from "../verify-banner";
 import { AddressManager } from "./address-manager";
+import { addressStepNext } from "@/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
-export default async function AddressesPage() {
+export default async function AddressesPage({ searchParams }: { searchParams: Promise<{ onboarding?: string }> }) {
+  const onboarding = (await searchParams).onboarding === "1";
   const jar = await cookies();
   const user = userFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect("/login?next=/account/addresses");
+  const addresses = listAddresses(user.id);
+  // Onboarding: a buyer who already has a default address skips this step.
+  const next = addressStepNext({ onboarding, hasDefault: addresses.some((a) => a.is_default) });
+  if (next) redirect(next);
   return (
     <main>
       <SiteHeader signedIn />
@@ -21,7 +27,7 @@ export default async function AddressesPage() {
         <p className="text-sm"><Link href="/account" className="underline">← Account</Link></p>
         <h1 className="mt-2 text-4xl">Shipping addresses</h1>
         {isEmailVerified(user.id) ? null : <VerifyBanner email={user.email} />}
-        <div className="mt-6"><AddressManager addresses={listAddresses(user.id)} /></div>
+        <div className="mt-6"><AddressManager addresses={addresses} onboarding={onboarding} /></div>
       </section>
     </main>
   );

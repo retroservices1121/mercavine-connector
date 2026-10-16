@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Address } from "@/lib/accounts";
+import { ONBOARDING_DONE_PATH } from "@/lib/onboarding";
 
 const FIELDS: [keyof Address, string, boolean][] = [
   ["label", "Label", false],
@@ -17,13 +18,20 @@ const FIELDS: [keyof Address, string, boolean][] = [
   ["postal_code", "ZIP", true],
 ];
 
-export function AddressManager({ addresses }: { addresses: Address[] }) {
+export function AddressManager({ addresses, onboarding = false }: { addresses: Address[]; onboarding?: boolean }) {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function call(url: string, method: string, body?: unknown) {
     setError("");
-    const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    let res: Response;
+    try {
+      res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    } catch {
+      setError("Couldn't reach Mercavine. Check your connection and try again.");
+      return false;
+    }
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       setError(j?.error?.message ?? "Something went wrong.");
@@ -50,8 +58,12 @@ export function AddressManager({ addresses }: { addresses: Address[] }) {
       <form
         action={async (fd) => {
           const body: Record<string, unknown> = Object.fromEntries(FIELDS.map(([k]) => [k, fd.get(k) || undefined]));
-          body.is_default = Boolean(fd.get("is_default"));
-          await call("/api/v1/addresses", "POST", body);
+          // The first address becomes the default so onboarding can finish.
+          body.is_default = Boolean(fd.get("is_default")) || !addresses.some((a) => a.is_default);
+          setSaving(true);
+          const ok = await call("/api/v1/addresses", "POST", body);
+          setSaving(false);
+          if (ok && onboarding) router.push(ONBOARDING_DONE_PATH);
         }}
         className="space-y-3 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5"
       >
@@ -65,7 +77,8 @@ export function AddressManager({ addresses }: { addresses: Address[] }) {
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_default" /> Make this my default</label>
         <p className="text-xs text-[var(--muted)]">US addresses only. Checkout ships to your default address unless your bot picks another saved one.</p>
         {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-        <Button type="submit" variant="vine">Save address</Button>
+        <Button type="submit" variant="vine" disabled={saving}>{saving ? "Saving…" : onboarding ? "Save and continue" : "Save address"}</Button>
+        {onboarding ? <p className="text-sm"><a href={ONBOARDING_DONE_PATH} className="underline">Skip for now</a></p> : null}
       </form>
     </div>
   );
