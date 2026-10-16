@@ -1,6 +1,7 @@
 import { SiteFooter, SUPPORT_EMAIL } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { config } from "@/lib/config";
+import { accountDeletion, PRIVACY_EFFECTIVE_DATE, PRIVACY_EMAIL, PRIVACY_OPERATOR } from "@/lib/privacy-content";
 
 export const metadata = { title: "Privacy" };
 
@@ -11,8 +12,9 @@ export default function PrivacyPage() {
       <SiteHeader />
       <main>
         <article className="mx-auto max-w-2xl space-y-4 px-5 py-10 leading-relaxed">
-          <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Draft privacy notice</p>
           <h1 className="text-4xl">Privacy Policy</h1>
+          <p className="text-sm text-[var(--muted)]">Effective date: {PRIVACY_EFFECTIVE_DATE}</p>
+          <p>{cfg.brandName} is operated by {PRIVACY_OPERATOR} (&quot;we&quot;, &quot;us&quot;). This policy explains what we collect and how we use it.</p>
           <p>
             {cfg.brandName} keeps only what it needs to run your orders: your account, saved addresses, your bot&apos;s permissions and limits, carts, orders, and a record of activity for security.
           </p>
@@ -27,8 +29,14 @@ export default function PrivacyPage() {
           <p>We don&apos;t sell your personal information, and shoppers never pay to use {cfg.brandName}.</p>
           <h2 className="text-2xl">How long we keep things</h2>
           <p>Order records are kept for tax and dispute purposes. You can disconnect your bot from your account page at any time, which also cancels its open carts.</p>
+          <h2 className="text-2xl">{accountDeletion.heading}</h2>
+          <p>
+            To delete your account, email <a className="underline" href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a> from the address on your account.
+            {" "}{accountDeletion.retention} {accountDeletion.orders}
+          </p>
+          <p>{accountDeletion.bots}</p>
           <h2 className="text-2xl">Contact</h2>
-          <p>{cfg.brandName}, <a className="underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
+          <p>{cfg.brandName}, operated by {PRIVACY_OPERATOR}. <a className="underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
         </article>
       </main>
       <SiteFooter />
