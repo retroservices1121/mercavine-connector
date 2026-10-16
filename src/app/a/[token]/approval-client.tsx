@@ -103,6 +103,7 @@ export function ApprovalClient({ token, cart, hasPasskey, devStepUp }: { token: 
         router.refresh();
         return;
       }
+      // Live Stripe: approval opens the card step (Payment Element) on this same hosted page.
       router.refresh();
     } catch {
       setError("The approval could not be completed.");

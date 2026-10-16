@@ -25,6 +25,7 @@ export type AppConfig = {
   stripeLivemode: boolean;
   sampleCatalog: boolean;
   stripeWebhookSecret: string | null;
+  stripePublishableKey: string | null;
   paymentMode: PaymentMode;
   shopifyCatalogEnabled: boolean;
   shopifyCatalogId: string | null;
@@ -132,6 +133,7 @@ export function config(): AppConfig {
     stripeLivemode: Boolean(stripeKey?.includes("_live_")),
     sampleCatalog,
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || null,
+    stripePublishableKey: /^pk_(live|test)_/.test(process.env.STRIPE_PUBLISHABLE_KEY?.trim() ?? "") ? process.env.STRIPE_PUBLISHABLE_KEY!.trim() : null,
     paymentMode,
     shopifyCatalogEnabled: process.env.SHOPIFY_CATALOG_ENABLED === "true",
     shopifyCatalogId: process.env.SHOPIFY_CATALOG_ID?.trim() || null,

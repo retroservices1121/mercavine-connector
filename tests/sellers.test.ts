@@ -41,6 +41,7 @@ function fakeStripe(state: Partial<StripeAccountState> = {}) {
     async createExpressAccount() { calls.push("create"); return { id: account.id }; },
     async createAccountLink(input) { calls.push(`link:${input.returnUrl}|${input.refreshUrl}`); return { url: "https://connect.stripe.test/onboard/abc" }; },
     async retrieveAccount() { calls.push("retrieve"); return { ...account }; },
+    async registerPaymentMethodDomain(input) { calls.push(`pmd:${input.account}:${input.domain}`); return { id: "pmd_test" }; },
   });
   return { calls, account };
 }
@@ -102,7 +103,7 @@ describe("seller onboarding", () => {
     const fake = fakeStripe();
     const start = await req("/api/v1/seller/stripe/onboard", "POST", {}, { cookie });
     expect((await start.json()).url).toBe("https://connect.stripe.test/onboard/abc");
-    expect(fake.calls).toEqual(["create", `link:${base}/seller?stripe=return|${base}/seller?stripe=refresh`]);
+    expect(fake.calls).toEqual(["create", "pmd:acct_test_1:mercavine.com", "pmd:acct_test_1:www.mercavine.com", `link:${base}/seller?stripe=return|${base}/seller?stripe=refresh`]);
     let dash = await (await req("/api/v1/seller/stripe/refresh", "POST", {}, { cookie })).json();
     expect(dash.stripe).toMatchObject({ connected: true, state: "in_progress", charges_enabled: false, payouts_enabled: false });
     expect(dash.seller.status).toBe("onboarding");

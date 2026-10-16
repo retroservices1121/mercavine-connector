@@ -42,6 +42,8 @@ export type StripeOnboardingClient = {
   createExpressAccount(input: { email: string; businessName: string; sellerId: string }): Promise<{ id: string }>;
   createAccountLink(input: { account: string; refreshUrl: string; returnUrl: string }): Promise<{ url: string }>;
   retrieveAccount(id: string): Promise<StripeAccountState>;
+  /** POST /v1/payment_method_domains on the connected account so Apple Pay / Google Pay / Link show for direct charges. */
+  registerPaymentMethodDomain(input: { account: string; domain: string }): Promise<{ id: string }>;
 };
 
 let override: StripeOnboardingClient | null = null;
@@ -60,6 +62,9 @@ function mockClient(): StripeOnboardingClient {
     },
     async retrieveAccount(id) {
       return { id, charges_enabled: true, payouts_enabled: true, details_submitted: true };
+    },
+    async registerPaymentMethodDomain() {
+      return { id: "pmd_mock" };
     },
   };
 }
@@ -87,6 +92,10 @@ async function liveClient(key: string): Promise<StripeOnboardingClient> {
       const a = await stripe.accounts.retrieve(id);
       return { id: a.id, charges_enabled: Boolean(a.charges_enabled), payouts_enabled: Boolean(a.payouts_enabled), details_submitted: Boolean(a.details_submitted) };
     },
+    async registerPaymentMethodDomain({ account, domain }) {
+      const pmd = await stripe.paymentMethodDomains.create({ domain_name: domain, enabled: true }, { stripeAccount: account });
+      return { id: pmd.id };
+    },
   };
 }
 
@@ -97,6 +106,37 @@ async function stripeClient(): Promise<StripeOnboardingClient> {
   // Stripe mode: real client only. Fail closed if the key is missing.
   if (!cfg.stripeSecretKey) throw new ApiError(503, "payments_unavailable", "Payout setup is temporarily unavailable. Please try again later.");
   return liveClient(cfg.stripeSecretKey);
+}
+
+/** Wallet domains for direct charges are per connected account. Best effort and recorded once; never blocks onboarding. */
+export function walletDomains(): string[] {
+  const cfg = config();
+  const set = new Set<string>();
+  for (const raw of [cfg.publicBaseUrl, `https://${cfg.brandDomain}`, `https://www.${cfg.brandDomain}`]) {
+    try {
+      const host = new URL(raw).hostname;
+      if (host && host !== "localhost" && !/^[\d.]+$/.test(host)) set.add(host);
+    } catch {
+      /* skip */
+    }
+  }
+  return [...set];
+}
+
+async function ensurePaymentMethodDomain(client: StripeOnboardingClient, sellerId: string, account: string) {
+  if (!account || account.startsWith("acct_mock")) return;
+  const row = one<{ pm_domains: string | null }>(getDb(), `SELECT pm_domains FROM sellers WHERE id = ?`, sellerId);
+  const done = new Set((row?.pm_domains ?? "").split(",").filter(Boolean));
+  for (const domain of walletDomains()) {
+    if (done.has(domain)) continue;
+    try {
+      await client.registerPaymentMethodDomain({ account, domain });
+      done.add(domain);
+    } catch {
+      /* retried on the next refresh */
+    }
+  }
+  run(getDb(), `UPDATE sellers SET pm_domains = ? WHERE id = ?`, [...done].join(","), sellerId);
 }
 
 // ---------- seller signup ----------
@@ -206,6 +246,7 @@ export async function startStripeOnboarding(userId: string): Promise<{ url: stri
     }
     run(getDb(), `UPDATE sellers SET stripe_account_id = ? WHERE id = ?`, account, seller.id);
   }
+  await ensurePaymentMethodDomain(client, seller.id, account);
   const base = config().publicBaseUrl;
   try {
     return await client.createAccountLink({ account, refreshUrl: `${base}/seller?stripe=refresh`, returnUrl: `${base}/seller?stripe=return` });
@@ -238,6 +279,7 @@ export async function refreshStripeStatus(userId: string): Promise<SellerRow> {
     return seller;
   }
   const status = state.charges_enabled ? "active" : "onboarding";
+  await ensurePaymentMethodDomain(await stripeClient(), seller.id, seller.stripe_account_id);
   run(
     getDb(),
     `UPDATE sellers SET stripe_charges_enabled = ?, stripe_payouts_enabled = ?, stripe_details_submitted = ?, status = ? WHERE id = ?`,

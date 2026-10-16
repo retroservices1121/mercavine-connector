@@ -3,7 +3,7 @@ import { createAddress, createBot, createUser, deleteAddress, listAddresses, lis
 import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
-import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, type LineInput } from "./cart";
+import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, cardSession, syncCardPayment, settleCardCart, noteCardFailure, type LineInput } from "./cart";
 import { categoryLabels, brandSnapshot, searchNative } from "./catalog";
 import { config } from "./config";
 import { getDb } from "./db";
@@ -14,6 +14,7 @@ import { authenticationOptions, registrationOptions, verifyAssertion, verifyRegi
 import { lookupProduct, searchAcross } from "./search";
 import { pollShopLink, shopLinkPublic, startShopLink, stripClientShopLine, verifyShopLines } from "./shop-pay";
 import { webhookPublicJwks } from "./webhooks";
+import { handleStripeEvent } from "./stripe-webhook";
 import { newId } from "./ids";
 import { nowIso } from "./clock";
 import Stripe from "stripe";
@@ -220,8 +221,17 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
       acknowledgedChanges: Boolean(json.acknowledged_changes),
       failSellerId: typeof json.simulate_failure_seller_id === "string" ? json.simulate_failure_seller_id : undefined,
     });
-    const waitingOnShop = !result.paid && result.code === "shop_pay_approval";
-    return cors(result.paid || waitingOnShop ? 200 : 402, result);
+    const waiting = !result.paid && (result.code === "shop_pay_approval" || result.code === "card_required");
+    return cors(result.paid || waiting ? 200 : 402, result, { "cache-control": "no-store" });
+  }
+  if (parts[0] === "approvals" && parts[2] === "payment" && parts.length === 3 && method === "GET") {
+    const user = requireUser(req);
+    return cors(200, await cardSession({ rawToken: decodeURIComponent(parts[1]), userId: user.id }), { "cache-control": "no-store" });
+  }
+  if (parts[0] === "approvals" && parts[2] === "payment" && parts[3] === "sync" && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    return cors(200, await syncCardPayment({ rawToken: decodeURIComponent(parts[1]), userId: user.id }), { "cache-control": "no-store" });
   }
   if (parts[0] === "approvals" && parts[2] === "decline" && method === "POST") {
     assertSameOrigin(req);
@@ -485,33 +495,27 @@ function scopeFor(method: string, parts: string[]): string {
 
 async function stripeWebhook(req: Request, raw: string): Promise<Response> {
   const cfg = config();
-  let event: { type?: string; data?: { object?: { metadata?: { cart_id?: string }; id?: string; status?: string } } };
+  type Evt = { id?: string; type?: string; account?: string; data?: { object?: Record<string, unknown> } };
+  let event: Evt | null = null;
   if (cfg.stripeWebhookSecret) {
-    event = Stripe.webhooks.constructEvent(raw, req.headers.get("stripe-signature") ?? "", cfg.stripeWebhookSecret) as typeof event;
+    // Comma-separated secrets allow one Connect endpoint and one platform endpoint (or a rotation).
+    const header = req.headers.get("stripe-signature") ?? "";
+    for (const secret of cfg.stripeWebhookSecret.split(",").map((x) => x.trim()).filter(Boolean)) {
+      try {
+        event = Stripe.webhooks.constructEvent(raw, header, secret) as unknown as Evt;
+        break;
+      } catch {
+        /* try the next secret */
+      }
+    }
+    if (!event) throw new ApiError(400, "bad_signature", "Stripe signature verification failed.");
   } else if (cfg.paymentMode === "mock") {
-    event = JSON.parse(raw || "{}") as typeof event;
+    event = JSON.parse(raw || "{}") as Evt;
   } else {
     throw new ApiError(400, "webhook_unconfigured", "Set STRIPE_WEBHOOK_SECRET to verify Stripe webhooks.");
   }
-  const type = event.type ?? "";
-  if (type === "account.updated") {
-    const acct = event.data?.object as { id?: unknown; charges_enabled?: unknown; payouts_enabled?: unknown; details_submitted?: unknown } | undefined;
-    if (acct && typeof acct.id === "string") {
-      applyStripeAccountState({
-        id: acct.id,
-        charges_enabled: acct.charges_enabled === true,
-        payouts_enabled: acct.payouts_enabled === true,
-        details_submitted: acct.details_submitted === true,
-      });
-    }
-    return cors(200, { received: true });
-  }
-  const cartId = event.data?.object?.metadata?.cart_id;
-  const intentId = event.data?.object?.id;
-  if (cartId && intentId && (type === "charge.refunded" || type === "payment_intent.canceled")) {
-    getDb().prepare(`UPDATE orders SET payment_status = 'refunded', updated_at = ? WHERE cart_id = ? AND stripe_payment_intent_id = ?`).run(nowIso(), cartId, intentId);
-  }
-  return cors(200, { received: true });
+  const result = await handleStripeEvent(event, { applyStripeAccountState, settleCardCart, noteCardFailure });
+  return cors(200, { received: true, ...result });
 }
 
 function openApi() {
