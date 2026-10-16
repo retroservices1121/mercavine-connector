@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { SiteFooter, SUPPORT_EMAIL } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { searchNative } from "@/lib/catalog";
 import { config } from "@/lib/config";
+import { featuredItems } from "@/lib/featured";
 import { formatUsd } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -47,10 +47,7 @@ const cta = "inline-flex h-12 items-center justify-center rounded-full px-6 font
 
 export default function HomePage() {
   const cfg = config();
-  const featured = searchNative({ limit: 8, inStock: true })
-    .map((product) => ({ product, offer: product.offers[0] }))
-    .filter((item) => item.offer)
-    .slice(0, 6);
+  const featured = featuredItems();
   return (
     <>
       <SiteHeader />
@@ -89,27 +86,46 @@ export default function HomePage() {
           </div>
         </section>
 
+        {featured.length > 0 && (
         <section aria-labelledby="featured-title" className="mx-auto max-w-6xl px-5 py-14 md:px-10">
           <h2 id="featured-title" className="text-4xl">Featured products</h2>
           <p className="mt-2 text-[var(--muted)]">A taste of what you can ask Grok for today.</p>
           <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {featured.map(({ product, offer }) => (
-              <li key={offer.offer_id} className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--card)]">
+            {featured.map((item) => (
+              <li key={item.kind === "listing" ? item.offer.offer_id : item.product.id} className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--card)]">
                 <div aria-hidden className="flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-[#dfe9dc] to-[#c7d9c3]">
-                  <span className="text-6xl">{categoryIcon[product.category] ?? "🛍️"}</span>
+                  <span className="text-6xl">{categoryIcon[item.product.category] ?? "🛍️"}</span>
                 </div>
                 <div className="p-5">
-                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{product.category.replaceAll("-", " ")}</p>
-                  <h3 className="mt-1 font-medium">{product.title}</h3>
-                  <p className="mt-2 flex items-center justify-between text-sm">
-                    <span className="text-[var(--muted)]">{offer.seller.name}</span>
-                    <span className="text-lg font-medium">{formatUsd(offer.price.amount)}</span>
-                  </p>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{item.product.category.replaceAll("-", " ")}</p>
+                  <h3 className="mt-1 font-medium">{item.product.title}</h3>
+                  {item.kind === "listing" ? (
+                    <p className="mt-2 flex items-center justify-between text-sm">
+                      <span className="text-[var(--muted)]">{item.offer.seller.name}</span>
+                      <span className="text-lg font-medium">{formatUsd(item.offer.price.amount)}</span>
+                    </p>
+                  ) : (
+                    <>
+                      <ul className="mt-2 list-disc pl-5 text-sm text-[var(--muted)]">
+                        {item.product.specs.map((spec) => <li key={spec}>{spec}</li>)}
+                      </ul>
+                      <p className="mt-3 flex items-center justify-between text-sm">
+                        <a className="text-[var(--muted)] underline" href={item.product.sourceUrl} rel="noopener noreferrer" target="_blank">
+                          {item.product.brand} model {item.product.model}
+                        </a>
+                        <span className="text-right">
+                          <span className="block text-lg font-medium">{formatUsd(item.product.listPriceCents)}</span>
+                          <span className="block text-xs text-[var(--muted)]">Manufacturer list price</span>
+                        </span>
+                      </p>
+                    </>
+                  )}
                 </div>
               </li>
             ))}
           </ul>
         </section>
+        )}
 
         <section id="sellers" aria-labelledby="sellers-title" className="bg-[var(--vine)] py-14 text-[#f4efe4]">
           <div className="mx-auto max-w-6xl px-5 md:px-10">
