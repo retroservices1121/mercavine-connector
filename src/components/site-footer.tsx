@@ -29,7 +29,7 @@ export function SiteFooter() {
           <a href={`mailto:${SUPPORT_EMAIL}`} className="block text-[#d7e7d4] underline hover:text-white">{SUPPORT_EMAIL}</a>
         </div>
       </div>
-      <p className="border-t border-white/10 px-5 py-4 text-center text-xs text-[#d7e7d4]">© {new Date().getFullYear()} {cfg.brandName}</p>
+      <p className="border-t border-white/10 px-5 py-4 text-center text-xs text-[#d7e7d4]">© {new Date().getFullYear()} {cfg.brandName}. Mercavine is a brand of Mobi Media Inc.</p>
     </footer>
   );
 }

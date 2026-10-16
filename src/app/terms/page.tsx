@@ -72,7 +72,7 @@ export default function TermsPage() {
               The rules for shopping and selling on Mercavine, including when an AI assistant shops for you.
             </p>
             <p className="mt-4 text-sm text-[#d7e7d4]">
-              Effective: <Ph id="effective_date" /> · Last updated: <Ph id="last_updated" />
+              Effective: October 16, 2026 · Last updated: October 16, 2026
             </p>
           </div>
         </section>
@@ -108,7 +108,7 @@ export default function TermsPage() {
             </Section>
 
             <Section id="who-we-are" summary="Mercavine is a marketplace. Sellers sell their own products; Mercavine connects them with shoppers and their AI assistants.">
-              <p>The Service is operated by <Ph id="entity_name" />, a <Ph id="entity_type" /> formed in <Ph id="formation_state" />, with its registered address at <Ph id="registered_address" /> (&ldquo;Mercavine,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;).</p>
+              <p>Mercavine is operated by Mobi Media Inc., a Florida corporation (&ldquo;Mercavine,&rdquo; &ldquo;we,&rdquo; &ldquo;us&rdquo;). Mercavine is a brand of Mobi Media Inc.</p>
               <p>Mercavine is a marketplace. Each seller is the seller of record for the products they list. Unless we say otherwise for a specific product, Mercavine does not own, inspect, store, or ship the products sold on the Service.</p>
             </Section>
 
@@ -123,9 +123,9 @@ export default function TermsPage() {
             </Section>
 
             <Section id="accounts" summary="You need an account to buy or sell. Keep it accurate and secure, and you must meet the minimum age.">
-              <p>You must be at least <Ph id="minimum_age" /> to create an account. The Service is offered in <Ph id="eligible_regions" />.</p>
+              <p>You must be at least 18 years old to create an account. The Service is available worldwide, subject to local laws and to the destinations each seller ships to.</p>
               <p>You agree to give accurate information, keep your password private, and tell us promptly if you think your account has been used without permission. You are responsible for activity on your account.</p>
-              <p>You can stop using the Service at any time. To delete your account: <Ph id="account_deletion" />.</p>
+              <p>You can stop using the Service at any time. To delete your account, email <a href="mailto:privacy@mercavine.com" className="underline">privacy@mercavine.com</a>. Your account data is kept for up to 30 days after the request, then deleted, except where the law requires us to keep it longer.</p>
             </Section>
 
             <Section id="shopper-terms" summary="You decide what to buy. Nothing is charged until you approve it at checkout.">

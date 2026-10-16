@@ -6,15 +6,6 @@
 export type TermsPlaceholder = { id: string; label: string; section: string; note: string };
 
 export const TERMS_PLACEHOLDERS: readonly TermsPlaceholder[] = [
-  { id: "effective_date", label: "Effective date", section: "header", note: "Date these terms take effect." },
-  { id: "last_updated", label: "Last-updated date", section: "header", note: "Update on every revision." },
-  { id: "entity_name", label: "Legal entity name", section: "who-we-are", note: "Exact registered name of the company operating Mercavine." },
-  { id: "entity_type", label: "Entity type (e.g. LLC, corporation)", section: "who-we-are", note: "Confirm with formation documents." },
-  { id: "formation_state", label: "State of formation", section: "who-we-are", note: "State where the entity is registered." },
-  { id: "registered_address", label: "Registered business address", section: "who-we-are", note: "Used for legal notices; may differ from a mailing address." },
-  { id: "minimum_age", label: "Minimum age to use Mercavine", section: "accounts", note: "e.g. 18 or age of majority; confirm with counsel." },
-  { id: "eligible_regions", label: "Countries or states where Mercavine is available", section: "accounts", note: "Current product assumes US shipping addresses; confirm legal scope." },
-  { id: "account_deletion", label: "Account deletion process and data retention reference", section: "accounts", note: "Link to the privacy policy section and describe how to request deletion." },
   { id: "prohibited_items", label: "Confirmed prohibited and restricted items list", section: "seller-terms", note: "Draft list on page is based on current launch scope; needs legal and payments review." },
   { id: "seller_eligibility", label: "Seller eligibility requirements (business type, location, verification)", section: "seller-terms", note: "Beyond Stripe's own verification." },
   { id: "payout_timing", label: "Seller payout timing", section: "seller-terms", note: "Depends on Stripe payout schedule and any reserve; confirm." },

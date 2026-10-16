@@ -24,4 +24,17 @@ describe("terms placeholders", () => {
     expect(page).not.toMatch(/\bJoe\b|Perez|\bJP\b/);
     expect(page).not.toMatch(/legal_notice_email[^\n]*privacy@/);
   });
+
+  it("has 29 open placeholders and the confirmed facts are final text", () => {
+    expect(TERMS_PLACEHOLDERS).toHaveLength(29);
+    for (const gone of ["effective_date", "last_updated", "entity_name", "entity_type", "formation_state", "registered_address", "minimum_age", "eligible_regions", "account_deletion"]) {
+      expect(TERMS_PLACEHOLDERS.some((p) => p.id === gone)).toBe(false);
+    }
+    expect(page).toContain("Mobi Media Inc., a Florida corporation");
+    expect(page).toContain("October 16, 2026");
+    expect(page).toContain("at least 18 years old");
+    expect(page).toContain("available worldwide");
+    expect(page).toContain("kept for up to 30 days after the request, then deleted");
+    expect(TERMS_PLACEHOLDERS.some((p) => p.id === "legal_notice_address")).toBe(true);
+  });
 });
