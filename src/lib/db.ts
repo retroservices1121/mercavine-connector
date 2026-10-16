@@ -482,6 +482,11 @@ function migrate(db: DatabaseSync): void {
     id TEXT PRIMARY KEY, cart_id TEXT NOT NULL UNIQUE, order_id TEXT, supplier TEXT NOT NULL, status TEXT NOT NULL,
     dedupe_key TEXT NOT NULL UNIQUE, cj_order_id TEXT, cj_status TEXT, tracking_number TEXT, tracking_url TEXT,
     request_json TEXT, detail TEXT, approved_by TEXT, approved_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+  // Sales tax for first-party sales (see tax.ts). One row per cart+seller; basis = what it was computed on.
+  db.exec(`CREATE TABLE IF NOT EXISTS tax_quotes (
+    cart_id TEXT NOT NULL, seller_id TEXT NOT NULL, basis TEXT NOT NULL, provider TEXT NOT NULL, tax_cents INTEGER NOT NULL,
+    approximate INTEGER NOT NULL DEFAULT 0, calculation_id TEXT, order_id TEXT, transaction_id TEXT, reversal_id TEXT,
+    stripe_account TEXT, created_at TEXT NOT NULL, PRIMARY KEY (cart_id, seller_id))`);
 }
 
 function addColumn(db: DatabaseSync, table: string, column: string, ddl: string): void {

@@ -193,6 +193,74 @@ export async function recheckCart(db: DatabaseSync, cartId: string): Promise<voi
   }
 }
 
+/**
+ * Checkout prep for Mercavine Store lines, before a PaymentIntent is created: re-check CJ stock and
+ * price, then (re)compute sales tax on the exact basis quote() uses. A changed basis forces a new
+ * calculation; an unchanged one reuses the stored quote.
+ */
+export async function prepareCheckout(cartId: string): Promise<void> {
+  const db = getDb();
+  await recheckCart(db, cartId);
+  const { taxBasis } = await import("./cart");
+  const { calculateTax } = await import("./tax");
+  const { firstPartyRouting } = await import("./first-party");
+  const cart = one<{ shipping_address_id: string | null }>(db, `SELECT shipping_address_id FROM carts WHERE id = ?`, cartId);
+  const address = cart?.shipping_address_id ? one<Parameters<typeof taxBasis>[2] & object>(db, `SELECT * FROM addresses WHERE id = ?`, cart.shipping_address_id) : undefined;
+  if (!address) throw new ApiError(422, "address_required", "Add a shipping address so we can calculate sales tax.");
+  const lines = many<{ id: string; unit_price_cents: number; quantity: number; shipping_cents: number }>(db,
+    `SELECT id, unit_price_cents, quantity, shipping_cents FROM cart_lines WHERE cart_id = ? AND seller_id = ? AND status != 'unavailable'`, cartId, FIRST_PARTY_SELLER_ID);
+  if (!lines.length) return;
+  const subtotal = lines.reduce((n, l) => n + l.unit_price_cents * l.quantity, 0);
+  const shipping = lines.reduce((n, l) => n + l.shipping_cents, 0);
+  const basis = taxBasis(subtotal, shipping, address);
+  const existing = one<{ basis: string }>(db, `SELECT basis FROM tax_quotes WHERE cart_id = ? AND seller_id = ?`, cartId, FIRST_PARTY_SELLER_ID);
+  if (existing?.basis === basis) return;
+  const route = firstPartyRouting();
+  const result = await calculateTax({
+    reference: cartId,
+    address: address as unknown as Parameters<typeof calculateTax>[0]["address"],
+    lines: lines.map((l) => ({ reference: l.id, amountCents: l.unit_price_cents * l.quantity, quantity: l.quantity })),
+    shippingCents: shipping,
+    stripeAccount: route.stripeAccountId,
+  });
+  run(db, `INSERT INTO tax_quotes (cart_id, seller_id, basis, provider, tax_cents, approximate, calculation_id, stripe_account, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(cart_id, seller_id) DO UPDATE SET basis = excluded.basis, provider = excluded.provider, tax_cents = excluded.tax_cents,
+      approximate = excluded.approximate, calculation_id = excluded.calculation_id, stripe_account = excluded.stripe_account, created_at = excluded.created_at`,
+    cartId, FIRST_PARTY_SELLER_ID, basis, result.provider, result.taxCents, result.approximate ? 1 : 0, result.calculationId, route.stripeAccountId, nowIso());
+}
+
+/** After capture: turn the Stripe Tax calculation into a recorded transaction. Never blocks fulfillment. */
+export async function commitTaxFor(cartId: string): Promise<string | null> {
+  const db = getDb();
+  const tq = one<{ calculation_id: string | null; transaction_id: string | null; stripe_account: string }>(db,
+    `SELECT calculation_id, transaction_id, stripe_account FROM tax_quotes WHERE cart_id = ? AND seller_id = ?`, cartId, FIRST_PARTY_SELLER_ID);
+  const order = one<{ id: string }>(db, `SELECT id FROM orders WHERE cart_id = ? AND seller_id = ?`, cartId, FIRST_PARTY_SELLER_ID);
+  if (!tq?.calculation_id || tq.transaction_id || !order) return tq?.transaction_id ?? null;
+  const { commitTax } = await import("./tax");
+  try {
+    const id = await commitTax(tq.calculation_id, order.id, tq.stripe_account);
+    run(db, `UPDATE tax_quotes SET transaction_id = ?, order_id = ? WHERE cart_id = ? AND seller_id = ?`, id, order.id, cartId, FIRST_PARTY_SELLER_ID);
+    return id;
+  } catch (e) {
+    console.error("tax transaction failed", (e as Error).message);
+    run(db, `UPDATE tax_quotes SET order_id = ?, transaction_id = NULL WHERE cart_id = ? AND seller_id = ?`, order.id, cartId, FIRST_PARTY_SELLER_ID);
+    return null;
+  }
+}
+
+/** Full refund of a first-party order: reverse the Stripe Tax transaction (idempotent). */
+export async function reverseTaxForPaymentIntent(paymentIntentId: string): Promise<string | null> {
+  const db = getDb();
+  const row = one<{ cart_id: string; order_id: string; transaction_id: string | null; reversal_id: string | null; stripe_account: string }>(db,
+    `SELECT t.cart_id, o.id AS order_id, t.transaction_id, t.reversal_id, t.stripe_account FROM orders o JOIN tax_quotes t ON t.cart_id = o.cart_id AND t.seller_id = o.seller_id WHERE o.stripe_payment_intent_id = ?`, paymentIntentId);
+  if (!row?.transaction_id || row.reversal_id) return row?.reversal_id ?? null;
+  const { reverseTax } = await import("./tax");
+  const id = await reverseTax(row.transaction_id, row.order_id, row.stripe_account);
+  run(db, `UPDATE tax_quotes SET reversal_id = ? WHERE cart_id = ? AND seller_id = ?`, id, row.cart_id, FIRST_PARTY_SELLER_ID);
+  return id;
+}
+
 export function cartHasFirstParty(db: DatabaseSync, cartId: string): boolean {
   return Boolean(one(db, `SELECT 1 FROM cart_lines WHERE cart_id = ? AND seller_id = ? LIMIT 1`, cartId, FIRST_PARTY_SELLER_ID));
 }
@@ -234,6 +302,7 @@ export async function approveSupplierOrder(id: string, admin: string): Promise<R
     run(db, `UPDATE supplier_orders SET status = 'capture_failed', updated_at = ? WHERE id = ?`, nowIso(), id);
     throw new ApiError(402, "capture_failed", "Payment capture did not complete. No supplier order was created.");
   }
+  await commitTaxFor(so.cart_id);
   return placeSupplierOrder(id);
 }
 

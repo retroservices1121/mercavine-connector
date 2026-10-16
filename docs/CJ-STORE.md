@@ -29,3 +29,17 @@ The store is Mercavine's own first-party seller. CJdropshipping supplies the pro
 7. `POST /api/v1/admin/cj/tracking`: polls getOrderDetail and marks orders shipped with the tracking number.
 
 The returns policy is at `/returns`: resend or refund for damaged, defective, or wrong items reported within 30 days.
+
+## Sales tax (Mercavine Store sales only)
+| Var | Default | Purpose |
+|---|---|---|
+| `TAX_PROVIDER` | `stripe` | `stripe` uses the Stripe Tax calculations API. `table` uses `src/data/state-tax-rates.json`, which is approximate: state base rates only, no local rates. `none` means $0 and must be set explicitly. |
+| `TAX_REGISTERED_STATES` | (empty) | Comma-separated states where Mercavine is registered, such as `NC`. Every other ship-to state is charged $0. |
+| `TAX_CODE_GOODS` | `txcd_99999999` | Stripe tax code sent on each line item. |
+
+- Tax is calculated in `prepareCheckout`, after the CJ stock and price re-check and **before** a PaymentIntent is created. The result is saved in `tax_quotes`, along with the basis it was calculated on (subtotal, shipping, ship-to address).
+- `quote()` uses a stored quote only when its basis still matches the cart. If the basis changed, the quote is treated as pending, and `chargesFor` refuses with 409 `tax_required`, so a stale tax amount is never charged.
+- When Stripe is the provider, checkout is blocked with 422 `tax_unavailable` if Stripe Tax settings aren't `active` or a calculation fails.
+- On admin approval, the full amount including tax is captured. Then `tax.transactions.createFromCalculation` runs with reference = order id.
+- A full `charge.refunded` triggers `tax.transactions.createReversal` with mode full. Partial refunds aren't reversed automatically.
+- Nexus and marketplace-facilitator registration is a business decision to make with an accountant.

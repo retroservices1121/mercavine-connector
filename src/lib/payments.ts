@@ -173,11 +173,6 @@ export async function createCardIntents(db: DatabaseSync, cartId: string, botId:
   if (charges.some((c) => !c.stripeAccountId || c.stripeAccountId.startsWith("acct_mock"))) {
     throw new ApiError(422, "seller_unavailable", "A seller in this cart can't accept payments right now. Nothing was charged.");
   }
-  if (charges.some((c) => isFirstPartySeller(c.sellerId))) {
-    // Re-check live CJ stock and price before any payment session exists.
-    const { recheckCart } = await import("./cj-store");
-    await recheckCart(db, cartId);
-  }
   const stripe = await stripeCardClient();
   const out: PendingCardIntent[] = [];
   for (const charge of charges) {
