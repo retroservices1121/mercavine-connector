@@ -3,7 +3,7 @@ import { botByToken, login, revokeBot } from "../src/lib/auth";
 import { approveCart, createCart, declineCart, loadApproval, submitCart, type LineInput } from "../src/lib/cart";
 import { setNow } from "../src/lib/clock";
 import { getDb } from "../src/lib/db";
-import { DEV_BOT_TOKEN } from "../src/lib/dev-keys";
+import { DEV_BOT_TOKEN, DEV_SHOPPER } from "../src/lib/dev-keys";
 import { ApiError } from "../src/lib/errors";
 import { sha256 } from "../src/lib/ids";
 import { applicationFee } from "../src/lib/money";
@@ -178,7 +178,7 @@ describe("checkout", () => {
   it("cancels open carts when the bot is revoked", () => {
     const { cart } = create([{ offer_id: "ofr_tape", quantity: 1 }]);
     submitCart({ bot: bot(), cartId: cart.id, idempotencyKey: key("submit") });
-    const session = login("jp@mercavine.test", "shelf-demo-2026");
+    const session = login(DEV_SHOPPER.email, DEV_SHOPPER.password);
     expect(session.user.id).toBe("usr_jp");
     revokeBot("bot_grok_jp", "usr_jp");
     const row = getDb().prepare(`SELECT status, status_reason FROM carts WHERE id = ?`).get(cart.id) as { status: string; status_reason: string };

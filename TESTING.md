@@ -8,8 +8,8 @@ Payments run in **mock mode** when `STRIPE_SECRET_KEY` is unset or does not star
 
 | Who | Credential |
 | --- | --- |
-| Shopper | `jp@mercavine.test` / `shelf-demo-2026` (Jordan Pike) |
-| Other shopper (foreign-link check) | `sam@mercavine.test` / `shelf-demo-2026` |
+| Shopper | `jp@mercavine.test` / value of `MERCAVINE_DEV_PASSWORD` (random per process if unset; demo seed is off in production unless `MERCAVINE_SEED_DEMO=1`) (Jordan Pike) |
+| Other shopper (foreign-link check) | `sam@mercavine.test` / same as above |
 | Bot token | `mv_test_jp_9f3c1a7b` |
 | Bot id | `bot_grok_jp` |
 

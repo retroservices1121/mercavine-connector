@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { nowIso } from "./clock";
-import { DEV_BOT_PUBLIC_KEY, DEV_BOT_TOKEN, DEV_OTHER_SHOPPER, DEV_SHOPPER } from "./dev-keys";
+import { randomBytes } from "node:crypto";
+import { DEMO_BOT_IDS, DEMO_USER_IDS, DEV_BOT_PUBLIC_KEY, DEV_BOT_TOKEN, DEV_OTHER_SHOPPER, DEV_SHOPPER, demoSeedEnabled } from "./dev-keys";
 import { sha256 } from "./ids";
 import { hashPassword } from "./password";
 
@@ -315,6 +316,7 @@ export function seedIfEmpty(db: DatabaseSync): void {
   const existing = db.prepare("SELECT COUNT(*) AS n FROM sellers").get() as { n: number } | undefined;
   if (existing && existing.n > 0) return;
   const at = nowIso();
+  if (demoSeedEnabled()) {
   const password = hashPassword(DEV_SHOPPER.password, "mercavine-dev-salt");
 
   const insertUser = db.prepare(
@@ -359,6 +361,7 @@ export function seedIfEmpty(db: DatabaseSync): void {
     at,
   );
 
+  }
   const insertSeller = db.prepare(
     `INSERT INTO sellers (
       id, name, slug, rating, rating_count, stripe_account_id, statement_descriptor,
@@ -414,3 +417,24 @@ export const LAUNCH_CATEGORIES = [
   { slug: "electronics-accessories", label: "Electronics accessories" },
   { slug: "outdoor", label: "Camping & outdoor", secondary: true },
 ] as const;
+
+/** When demo seeding is off, disable any demo identities left in an existing db. */
+export function disableDemoIdentities(db: DatabaseSync): void {
+  if (demoSeedEnabled()) return;
+  const users = DEMO_USER_IDS.map(() => "?").join(",");
+  const bots = DEMO_BOT_IDS.map(() => "?").join(",");
+  const sessions = db.prepare(`DELETE FROM sessions WHERE user_id IN (${users})`).run(...DEMO_USER_IDS).changes;
+  const passkeys = db.prepare(`DELETE FROM webauthn_credentials WHERE user_id IN (${users})`).run(...DEMO_USER_IDS).changes;
+  const usersDisabled = db
+    .prepare(`UPDATE users SET password_hash = 'disabled' WHERE id IN (${users}) AND password_hash <> 'disabled'`)
+    .run(...DEMO_USER_IDS).changes;
+  let botsRevoked = 0;
+  for (const id of DEMO_BOT_IDS) {
+    botsRevoked += Number(db
+      .prepare(`UPDATE bots SET token_hash = ?, revoked_at = COALESCE(revoked_at, ?) WHERE id = ? AND token_hash NOT LIKE 'revoked:%'`)
+      .run(`revoked:${randomBytes(16).toString("hex")}`, nowIso(), id).changes);
+  }
+  if (sessions || passkeys || usersDisabled || botsRevoked) {
+    console.log(`[mercavine] demo cleanup: users_disabled=${usersDisabled} sessions_deleted=${sessions} passkeys_deleted=${passkeys} bots_revoked=${botsRevoked}`);
+  }
+}

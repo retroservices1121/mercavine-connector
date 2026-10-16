@@ -32,11 +32,11 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
     <form action={onSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" autoComplete="username" required defaultValue="jp@mercavine.test" />
+        <Input id="email" name="email" type="email" autoComplete="username" required />
       </div>
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <Input id="password" name="password" type="password" autoComplete="current-password" required defaultValue="shelf-demo-2026" />
+        <Input id="password" name="password" type="password" autoComplete="current-password" required />
       </div>
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       <Button type="submit" variant="vine" disabled={pending} className="w-full">

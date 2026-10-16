@@ -11,7 +11,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <section className="mx-auto max-w-md px-5 py-10">
         <h1 className="text-4xl">Sign in</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          The test shopper is jp@mercavine.test. Password auth is for local review. Passkeys can be enrolled after sign-in.
+          Sign in with your Mercavine account. Passkeys can be enrolled after sign-in.
           {cfg.brandName} does not share this session with your bot.
         </p>
         <div className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5">
