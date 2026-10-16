@@ -4,6 +4,8 @@ import { addHours, nowIso } from "./clock";
 import { getDb, transaction } from "./db";
 import { ApiError } from "./errors";
 import { newId, randomToken, sha256 } from "./ids";
+import { sendUnlockEmail } from "./email-auth";
+import { assertNotLocked, clearAccountFailures, recordFailedLogin } from "./lockout";
 import { verifyPassword } from "./password";
 import { verifyBotSignature } from "./signatures";
 import { one, run } from "./sql";
@@ -81,12 +83,17 @@ export function userById(id: string, db: DatabaseSync = getDb()): SessionUser | 
   return one<SessionUser>(db, `SELECT id, email, name, display_name FROM users WHERE id = ?`, id);
 }
 
-export function login(email: string, password: string): { token: string; user: SessionUser } {
+export function login(email: string, password: string, ip: string | null = null): { token: string; user: SessionUser } {
   const db = getDb();
-  const row = one<SessionUser & { password_hash: string }>(db, `SELECT id, email, name, display_name, password_hash FROM users WHERE email = ?`, email.trim().toLowerCase());
+  const normalized = email.trim().toLowerCase();
+  assertNotLocked(normalized, ip, db);
+  const row = one<SessionUser & { password_hash: string }>(db, `SELECT id, email, name, display_name, password_hash FROM users WHERE email = ?`, normalized);
   if (!row || !verifyPassword(password, row.password_hash)) {
+    const locks = recordFailedLogin(normalized, ip, db);
+    if (row && locks.some((l) => l.kind === "account")) void sendUnlockEmail(row.id, row.email);
     throw new ApiError(401, "invalid_login", "Email or password is wrong.");
   }
+  clearAccountFailures(normalized, db);
   const token = randomToken(32);
   run(
     db,
