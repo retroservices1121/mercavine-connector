@@ -15,7 +15,7 @@ export function SiteFooter() {
         <nav aria-label="Company" className="space-y-2 text-sm">
           <p className="font-medium">Company</p>
           <Link href="/#about" className="block text-[#d7e7d4] hover:text-white">About</Link>
-          <Link href="/#sellers" className="block text-[#d7e7d4] hover:text-white">Sell on {cfg.brandName}</Link>
+          <Link href="/sell" className="block text-[#d7e7d4] hover:text-white">Sell on {cfg.brandName}</Link>
           <Link href="/developers" className="block text-[#d7e7d4] hover:text-white">Developers</Link>
         </nav>
         <nav aria-label="Legal" className="space-y-2 text-sm">
