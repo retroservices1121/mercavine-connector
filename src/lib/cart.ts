@@ -1,3 +1,4 @@
+import { assertEmailVerified } from "./email-auth";
 import type { DatabaseSync } from "node:sqlite";
 import { fulfillNativeOrder } from "./amazon-mcf";
 import type { BotRecord } from "./auth";
@@ -527,6 +528,7 @@ export function createCart(input: {
   fromCartId?: string;
   idempotencyKey?: string;
 }): IdemResult {
+  assertEmailVerified(input.bot.user_id);
   const payload = {
     lines: input.lines ?? null,
     shipping_address_id: input.shippingAddressId ?? null,
@@ -775,6 +777,7 @@ export function submitCart(input: {
   allowPartial?: boolean;
   notify?: string[];
 }): IdemResult {
+  assertEmailVerified(input.bot.user_id);
   const payload = { cart_id: input.cartId, allow_partial: Boolean(input.allowPartial), notify: input.notify ?? [] };
   return withIdempotency(input.bot.id, input.idempotencyKey, payload, (db) => {
     sweepIn(db);
@@ -1280,6 +1283,7 @@ export async function approveCart(input: {
   acknowledgedChanges?: boolean;
   failSellerId?: string;
 }) {
+  assertEmailVerified(input.userId);
   const prepared = transaction((db) => {
     const token = tokenRow(db, input.rawToken);
     if (!token || token.revoked_at) throw new ApiError(409, "invalid_state", "This approval link is no longer valid.");

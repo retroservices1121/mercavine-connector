@@ -319,7 +319,7 @@ export function seedIfEmpty(db: DatabaseSync): void {
   const password = hashPassword(DEV_SHOPPER.password, "mercavine-dev-salt");
 
   const insertUser = db.prepare(
-    `INSERT INTO users (id, email, name, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO users (id, email, name, display_name, password_hash, created_at, email_verified) VALUES (?, ?, ?, ?, ?, ?, 1)`,
   );
   insertUser.run("usr_jp", DEV_SHOPPER.email, DEV_SHOPPER.name, DEV_SHOPPER.displayName, password, at);
   insertUser.run(
@@ -461,6 +461,7 @@ function demoTargets(ids: Ids): [string, string, string[]][] {
     ["carts", `id IN (${C})`, ids.carts],
     ["events", `id IN (${E})`, ids.events],
     ["notifications", `user_id IN (${U})`, ids.users],
+    ["email_tokens", `user_id IN (${U})`, ids.users],
     ["auto_rules", `bot_client_id IN (${B}) OR user_id IN (${U})`, [...ids.bots, ...ids.users]],
     ["idempotency_keys", `bot_client_id IN (${B})`, ids.bots],
     ["audit_log", `actor_id IN (${inList(all.length)}) OR resource_id IN (${inList(all.length)})`, [...all, ...all]],

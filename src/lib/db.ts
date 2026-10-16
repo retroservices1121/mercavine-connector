@@ -426,6 +426,17 @@ CREATE INDEX IF NOT EXISTS idx_offers_product ON offers(product_id);
 CREATE INDEX IF NOT EXISTS idx_carts_owner ON carts(user_id, bot_client_id, status);
 CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS email_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  purpose TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_email_tokens_user ON email_tokens(user_id, purpose);
 `;
 
 function migrate(db: DatabaseSync): void {

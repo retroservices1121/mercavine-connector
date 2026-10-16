@@ -19,7 +19,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <LoginForm nextPath={params.next} />
         </div>
         <p className="mt-4 text-sm">
-          New to {cfg.brandName}? <Link href="/signup" className="underline">Create an account</Link>
+          <Link href="/forgot-password" className="underline">Forgot password?</Link>{" · "}New to {cfg.brandName}? <Link href="/signup" className="underline">Create an account</Link>
         </p>
       </section>
     </main>
