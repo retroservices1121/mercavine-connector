@@ -430,6 +430,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id, created_at);
 
 function migrate(db: DatabaseSync): void {
   addColumn(db, "orders", "payment_provider", "TEXT NOT NULL DEFAULT 'stripe'");
+  // TODO(email-verification): send a verification link and set this to 1 on confirm. Not enforced yet.
+  addColumn(db, "users", "email_verified", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "cart_lines", "placement_json", "TEXT");
   const offerCols = db.prepare(`PRAGMA table_info(offers)`).all() as { name: string }[];
   const hadFba = offerCols.some((col) => col.name === "fba_backed");

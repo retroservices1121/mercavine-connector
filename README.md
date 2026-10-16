@@ -4,7 +4,7 @@ Bot-first marketplace connector. A shopper's agent searches the catalog and buil
 
 The connector is free. The platform fee is **3%** of each seller charge (`PLATFORM_FEE_BPS=300`), collected as Stripe `application_fee_amount` before the seller's payout. It is not added to the shopper total. A $100.00 charge carries a $3.00 fee.
 
-Contact: Joe Perez, CEO, mercavine-outreach@mail.grokbot.com. The mercavine.com domain is intended and not purchased, so there is no website URL yet.
+Contact: Joe Perez, CEO, mercavine-outreach@mail.grokbot.com. Website: https://mercavine.com (MCP at https://mercavine.com/mcp, privacy at https://mercavine.com/privacy).
 
 ## Run
 
@@ -18,6 +18,8 @@ App, REST API, and MCP server: http://127.0.0.1:4317
 
 - Health: `GET /api/health`
 - Bot API: `/api/v1/...` with `Authorization: Bearer <token>`
+- Shopper accounts: `/signup` (`POST /api/v1/users`), addresses at `/account/addresses` (`/api/v1/addresses`), bot tokens at `/account/bots` (`POST /api/v1/bots`, scope groups `shop`, `checkout`, `track`)
+- Email verification is not implemented yet (`users.email_verified` stays 0)
 - MCP: `POST /mcp` (streamable HTTP, stateless, JSON responses)
 - Approval page: `/a/<token>`
 - Seller Amazon connection: `/sellers` (off unless `AMAZON_MCF_ENABLED=true`)

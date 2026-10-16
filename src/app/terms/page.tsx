@@ -13,7 +13,7 @@ export default function TermsPage() {
         <h1 className="text-4xl">Terms of Service</h1>
         <p>
           These draft terms cover {cfg.brandLegalName}. The connector is free. {cfg.brandName} does not charge shoppers or bot platforms for access.
-          Contact {cfg.contactName}, {cfg.contactRole}, at {cfg.contactEmail}. The {cfg.brandDomain} domain is the intended address and has not been purchased, so there is no website URL yet.
+          Contact {cfg.contactName}, {cfg.contactRole}, at {cfg.contactEmail}. Website: https://{cfg.brandDomain}.
         </p>
         <h2 className="text-2xl">Who sells</h2>
         <p>
