@@ -24,7 +24,7 @@
   "testing_instructions_file": "TESTING.md",
   "tested_locally": true,
   "tested_locally_note": "Check the form's tested-locally box. npm test covers the mock checkout. Reviewers sign up at /signup, add an address, and connect a bot at /account/bots.",
-  "publisher_terms": "Draft terms and privacy policy are served at /terms and /privacy. They name Joe Perez, CEO, mercavine-outreach@mail.grokbot.com, and the 3% seller fee.",
+  "publisher_terms": "Draft terms and privacy policy are served at /terms and /privacy. They list Mercavine as the contact (privacy@mercavine.com) and the 3% seller fee.",
   "contact": {
     "name": "Joe Perez",
     "role": "CEO",

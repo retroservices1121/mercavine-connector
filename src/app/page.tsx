@@ -1,81 +1,170 @@
 import Link from "next/link";
+import { SiteFooter, SUPPORT_EMAIL } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { Badge } from "@/components/ui/badge";
-import { categoryLabels, searchNative } from "@/lib/catalog";
+import { searchNative } from "@/lib/catalog";
 import { config } from "@/lib/config";
-import { feePercentLabel, formatUsd } from "@/lib/money";
+import { formatUsd } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
+const steps = [
+  ["Ask Grok", "Tell Grok what you need, like “a cordless drill under $150.” It finds options from Mercavine sellers."],
+  ["Review your cart", "Grok puts together a cart with real prices and stock. Nothing is bought yet."],
+  ["Approve and pay", "Open one secure checkout, check the details, and pay. Grok keeps you posted on delivery."],
+];
+
+const sellerBenefits = [
+  ["Reach AI shoppers", "Shoppers ask their AI assistants to buy for them. List once and your products show up when they ask."],
+  ["A simple 3% fee, only when you sell", "No monthly plan and no listing fees. You pay only on completed sales."],
+  ["Paid straight to you", "Payments go through Stripe directly to your account. You stay the seller, with your own customers."],
+  ["Ship your way", "Ship it yourself, or let Amazon fulfill orders you already stock there."],
+];
+
+const trust = [
+  ["Secure checkout", "Payments run through Stripe, and Shop Pay is supported. Your bot never sees your card."],
+  ["You approve every purchase", "Your bot can shop and build a cart, but nothing is charged until you say yes."],
+  ["Spending limits", "Set a per-order and monthly limit for your bot, and disconnect it anytime."],
+];
+
+const faqs = [
+  ["Do I need Grok to shop?", "Mercavine is built for shopping through Grok. Create a free account, connect your bot from your account page, then just ask."],
+  ["Can my bot buy something without me?", "No. Every purchase waits for your approval on a secure checkout page, and your spending limits always apply."],
+  ["Does it cost shoppers anything?", "No. Shoppers pay only for what they buy. There are no extra fees."],
+  ["What does it cost to sell?", "A simple 3% fee, only when you sell. Nothing up front."],
+  ["What can I buy?", "We're starting with home improvement, tools and electronics accessories, plus camping and outdoor gear."],
+  ["How do I get help?", `Email us at ${SUPPORT_EMAIL}. We read every message.`],
+];
+
+const categoryIcon: Record<string, string> = {
+  "home-improvement": "🏠",
+  tools: "🛠️",
+  "electronics-accessories": "🔌",
+  outdoor: "⛺",
+  "camping-outdoor": "⛺",
+};
+
+const cta = "inline-flex h-12 items-center justify-center rounded-full px-6 font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
+
 export default function HomePage() {
   const cfg = config();
-  const fee = feePercentLabel(cfg.platformFeeBps);
-  const sample = searchNative({ limit: 4, inStock: true });
+  const featured = searchNative({ limit: 8, inStock: true })
+    .map((product) => ({ product, offer: product.offers[0] }))
+    .filter((item) => item.offer)
+    .slice(0, 6);
   return (
-    <main>
+    <>
       <SiteHeader />
-      <section className="mx-auto grid max-w-5xl gap-10 px-5 pb-16 pt-8 md:grid-cols-[1.2fr_0.8fr] md:px-10">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Bot-first marketplace</p>
-          <h1 className="mt-3 text-5xl leading-[1.05] md:text-6xl">Buy from sellers who expect your bot.</h1>
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
-            {cfg.brandName} lets a shopper&apos;s agent search, compare, and build a cart. The human opens one approval link and pays.
-            Each seller is charged on their own Stripe account. {cfg.brandName} takes a {fee} fee from that charge and never holds the sale.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/login" className="inline-flex h-12 items-center rounded-full bg-[var(--vine)] px-6 text-[#f4efe4]">
-              Sign in to review a purchase
-            </Link>
-            <Link href="/signup" className="inline-flex h-12 items-center rounded-full border border-[var(--line)] px-6">
-              Create an account
-            </Link>
-            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API route, not a page */}
-            <a href="/api/health" className="inline-flex h-12 items-center rounded-full border border-[var(--line)] px-6">
-              API health
+      <main>
+        <section className="mx-auto max-w-6xl px-5 pb-14 pt-12 md:px-10 md:pt-20">
+          <p className="text-xs uppercase tracking-[0.18em] text-[var(--copper)]">The marketplace for AI shopping</p>
+          <h1 className="mt-3 max-w-3xl text-5xl leading-[1.05] md:text-7xl">Just ask Grok. We&apos;ll handle the checkout.</h1>
+          <div className="mt-10 grid gap-4 md:grid-cols-2">
+            <div className="rounded-3xl border border-[var(--line)] bg-[var(--card)] p-6">
+              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">For shoppers</p>
+              <h2 className="mt-2 text-3xl">Just ask Grok</h2>
+              <p className="mt-2 text-[var(--muted)]">Say what you&apos;re looking for. Grok finds it, builds your cart, and you approve one secure checkout.</p>
+              <Link href="/signup" className={`${cta} mt-5 bg-[var(--vine)] text-[#f4efe4] focus-visible:outline-[var(--vine)]`}>Sign up as a shopper</Link>
+            </div>
+            <div className="rounded-3xl bg-[var(--vine)] p-6 text-[#f4efe4]">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#d7e7d4]">For sellers</p>
+              <h2 className="mt-2 text-3xl">More sales from AI shoppers</h2>
+              <p className="mt-2 text-[#d7e7d4]">List once and get found by shoppers whose assistants are ready to buy. A simple 3% fee, only when you sell.</p>
+              <Link href="/#sellers" className={`${cta} mt-5 bg-[#f4efe4] text-[var(--vine)] focus-visible:outline-[#f4efe4]`}>Sell on {cfg.brandName}</Link>
+            </div>
+          </div>
+        </section>
+
+        <section id="how-it-works" aria-labelledby="how-title" className="bg-[var(--card)] py-14">
+          <div className="mx-auto max-w-6xl px-5 md:px-10">
+            <h2 id="how-title" className="text-4xl">How it works</h2>
+            <ol className="mt-8 grid gap-6 md:grid-cols-3">
+              {steps.map(([title, copy], index) => (
+                <li key={title} className="rounded-3xl border border-[var(--line)] bg-[var(--paper)] p-6">
+                  <span aria-hidden className="display flex h-10 w-10 items-center justify-center rounded-full bg-[var(--vine)] text-lg text-[#f4efe4]">{index + 1}</span>
+                  <h3 className="display mt-4 text-2xl">{title}</h3>
+                  <p className="mt-2 text-[var(--muted)]">{copy}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <section aria-labelledby="featured-title" className="mx-auto max-w-6xl px-5 py-14 md:px-10">
+          <h2 id="featured-title" className="text-4xl">Featured products</h2>
+          <p className="mt-2 text-[var(--muted)]">A taste of what you can ask Grok for today.</p>
+          <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {featured.map(({ product, offer }) => (
+              <li key={offer.offer_id} className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--card)]">
+                <div aria-hidden className="flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-[#dfe9dc] to-[#c7d9c3]">
+                  <span className="text-6xl">{categoryIcon[product.category] ?? "🛍️"}</span>
+                </div>
+                <div className="p-5">
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{product.category.replaceAll("-", " ")}</p>
+                  <h3 className="mt-1 font-medium">{product.title}</h3>
+                  <p className="mt-2 flex items-center justify-between text-sm">
+                    <span className="text-[var(--muted)]">{offer.seller.name}</span>
+                    <span className="text-lg font-medium">{formatUsd(offer.price.amount)}</span>
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section id="sellers" aria-labelledby="sellers-title" className="bg-[var(--vine)] py-14 text-[#f4efe4]">
+          <div className="mx-auto max-w-6xl px-5 md:px-10">
+            <h2 id="sellers-title" className="text-4xl">Sell where shoppers are asking</h2>
+            <p className="mt-2 max-w-2xl text-[#d7e7d4]">More and more people let an AI assistant do the shopping. {cfg.brandName} puts your products in front of them.</p>
+            <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {sellerBenefits.map(([title, copy]) => (
+                <li key={title} className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10">
+                  <h3 className="display text-xl">{title}</h3>
+                  <p className="mt-2 text-sm text-[#d7e7d4]">{copy}</p>
+                </li>
+              ))}
+            </ul>
+            <a href={`mailto:${SUPPORT_EMAIL}?subject=Selling%20on%20Mercavine`} className={`${cta} mt-8 bg-[#f4efe4] text-[var(--vine)] focus-visible:outline-[#f4efe4]`}>
+              Start selling — get in touch
             </a>
           </div>
-        </div>
-        <ol className="space-y-4 rounded-3xl bg-[var(--vine)] p-6 text-[#f4efe4]">
-          {[
-            ["Search", "The bot calls search_products. It never sees a card."],
-            ["Cart", "create_cart keeps price and stock on the server."],
-            ["Approval", "request_checkout returns one short-lived link. You pay. The bot polls get_order_status."],
-          ].map(([title, copy], index) => (
-            <li key={title}>
-              <p className="text-xs uppercase tracking-[0.16em] text-[#d7e7d4]">0{index + 1}</p>
-              <p className="display mt-1 text-2xl">{title}</p>
-              <p className="mt-1 text-sm text-[#d7e7d4]">{copy}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-      <section className="mx-auto max-w-5xl px-5 pb-16 md:px-10">
-        <h2 className="text-3xl">Launch categories</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {categoryLabels().map((category) => (
-            <Badge key={category.slug}>{category.secondary ? `${category.label} · secondary` : category.label}</Badge>
-          ))}
-        </div>
-        <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-          {sample.flatMap((product) =>
-            product.offers.slice(0, 1).map((offer) => (
-              <li key={offer.offer_id} className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4">
-                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{product.category.replaceAll("-", " ")}</p>
-                <p className="mt-1 font-medium">{product.title}</p>
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  {offer.seller.name} · {formatUsd(offer.price.amount)}
-                </p>
+        </section>
+
+        <section aria-labelledby="trust-title" className="mx-auto max-w-6xl px-5 py-14 md:px-10">
+          <h2 id="trust-title" className="text-4xl">Safe by design</h2>
+          <ul className="mt-8 grid gap-5 md:grid-cols-3">
+            {trust.map(([title, copy]) => (
+              <li key={title} className="rounded-3xl border border-[var(--line)] bg-[var(--card)] p-6">
+                <h3 className="display text-2xl">{title}</h3>
+                <p className="mt-2 text-[var(--muted)]">{copy}</p>
               </li>
-            )),
-          )}
-        </ul>
-        <p className="mt-6 max-w-2xl text-sm text-[var(--muted)]">
-          The connector is free. Sellers pay the {fee} platform fee via Stripe <code>application_fee_amount</code> before their payout.
-          A $100.00 charge carries a $3.00 fee at the default rate. Shop Pay orders are paid on the merchant&apos;s checkout and do not carry that fee.
-          Contact {cfg.contactName}, {cfg.contactRole}, {cfg.contactEmail}.
-          The {cfg.brandDomain} domain is intended and not yet purchased.
-        </p>
-      </section>
-    </main>
+            ))}
+          </ul>
+        </section>
+
+        <section id="faq" aria-labelledby="faq-title" className="mx-auto max-w-3xl px-5 py-6 md:px-10">
+          <h2 id="faq-title" className="text-4xl">Questions</h2>
+          <div className="mt-6 divide-y divide-[var(--line)] border-y border-[var(--line)]">
+            {faqs.map(([q, a]) => (
+              <details key={q} className="group py-4">
+                <summary className="cursor-pointer list-none text-lg font-medium marker:hidden">
+                  {q} <span aria-hidden className="float-right text-[var(--muted)] group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-2 text-[var(--muted)]">{a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section id="about" aria-labelledby="about-title" className="mx-auto max-w-3xl px-5 py-14 text-center md:px-10">
+          <h2 id="about-title" className="text-4xl">About {cfg.brandName}</h2>
+          <p className="mt-3 text-[var(--muted)]">
+            {cfg.brandName} is a marketplace built for shopping with AI. Shoppers get a faster way to buy, with full control over every purchase.
+            Sellers get a new way to be found.
+          </p>
+          <Link href="/signup" className={`${cta} mt-6 bg-[var(--vine)] text-[#f4efe4] focus-visible:outline-[var(--vine)]`}>Create your free account</Link>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
   );
 }

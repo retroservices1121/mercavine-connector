@@ -10,7 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const cfg = config();
   return {
     title: { default: cfg.brandName, template: `%s · ${cfg.brandName}` },
-    description: `${cfg.brandName} is a bot-first marketplace. Your agent builds the cart. You approve the charge. Sellers are paid on their own Stripe accounts.`,
+    description: `Just ask Grok to find it. ${cfg.brandName} handles a secure checkout you approve. Sellers get more sales from AI shoppers.`,
   };
 }
 
