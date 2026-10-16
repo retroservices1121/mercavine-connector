@@ -1,0 +1,31 @@
+{
+  "first_name": "Joe",
+  "last_name": "Perez",
+  "work_email": "mercavine-outreach@mail.grokbot.com",
+  "organization_name": "Mercavine",
+  "organization_handle": "mercavine",
+  "website_url": "",
+  "website_url_note": "Placeholder. mercavine.com is the intended domain and has not been purchased.",
+  "logotype_file": "submission/logo.svg",
+  "logotype_url": "https://mercavine.com/logo.svg",
+  "logotype_url_note": "Placeholder until the domain is purchased and the app is hosted. The file is a square SVG with a background plate.",
+  "listing_targets": ["Grok Bot", "Cursor"],
+  "mcp_server_url": "https://mcp.mercavine.com/mcp",
+  "mcp_server_url_note": "Placeholder. Local server is http://127.0.0.1:4317/mcp. A GitHub repository can be used instead once this project has a public remote.",
+  "github_repo": "",
+  "brief_description": "Mercavine lets a shopper's agent search home improvement, tools, and electronics accessories, then hand the human one approval link. The connector is free. Each seller is charged on their own Stripe account, and Mercavine takes a 3% application fee from that charge (not from the shopper). The bot never sees or completes payment.",
+  "connector_price": "free",
+  "platform_fee_bps": 300,
+  "platform_fee_label": "3%",
+  "fee_example": "A $100.00 seller charge includes a $3.00 application fee. The shopper total does not increase.",
+  "testing_instructions_file": "TESTING.md",
+  "tested_locally": true,
+  "tested_locally_note": "Check the form's tested-locally box. npm test covers the mock checkout, and the steps in TESTING.md use jp@mercavine.test.",
+  "publisher_terms": "Draft terms and privacy policy are served at /terms and /privacy. They name Joe Perez, CEO, mercavine-outreach@mail.grokbot.com, and the 3% seller fee.",
+  "contact": {
+    "name": "Joe Perez",
+    "role": "CEO",
+    "email": "mercavine-outreach@mail.grokbot.com"
+  },
+  "submitted": false
+}
