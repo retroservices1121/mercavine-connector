@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "./config";
-import { disableDemoIdentities, seedIfEmpty } from "./seed";
+import { purgeDemoIdentities, seedIfEmpty } from "./seed";
 
 type Cache = { db: DatabaseSync; path: string };
 const g = globalThis as unknown as { __mercavineDb?: Cache };
@@ -462,7 +462,7 @@ export function getDb(): DatabaseSync {
   db.exec(SCHEMA);
   migrate(db);
   seedIfEmpty(db);
-  disableDemoIdentities(db);
+  purgeDemoIdentities(db);
   g.__mercavineDb = { db, path };
   return db;
 }

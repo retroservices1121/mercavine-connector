@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import { nowIso } from "./clock";
-import { randomBytes } from "node:crypto";
 import { DEMO_BOT_IDS, DEMO_USER_IDS, DEV_BOT_PUBLIC_KEY, DEV_BOT_TOKEN, DEV_OTHER_SHOPPER, DEV_SHOPPER, demoSeedEnabled } from "./dev-keys";
 import { sha256 } from "./ids";
 import { hashPassword } from "./password";
@@ -418,23 +417,85 @@ export const LAUNCH_CATEGORIES = [
   { slug: "outdoor", label: "Camping & outdoor", secondary: true },
 ] as const;
 
-/** When demo seeding is off, disable any demo identities left in an existing db. */
-export function disableDemoIdentities(db: DatabaseSync): void {
+type Ids = { users: string[]; bots: string[]; carts: string[]; orders: string[]; events: string[]; endpoints: string[] };
+
+function inList(n: number): string {
+  return n ? Array.from({ length: n }, () => "?").join(",") : "NULL";
+}
+
+function collectDemoIds(db: DatabaseSync): Ids {
+  const users = [...DEMO_USER_IDS] as string[];
+  const userBots = (db.prepare(`SELECT id FROM bots WHERE user_id IN (${inList(users.length)})`).all(...users) as { id: string }[]).map((r) => r.id);
+  const bots = [...new Set([...(DEMO_BOT_IDS as readonly string[]), ...userBots])];
+  const col = (sql: string, ...args: string[]) => (db.prepare(sql).all(...args) as { id: string }[]).map((r) => r.id);
+  const carts = col(`SELECT id FROM carts WHERE user_id IN (${inList(users.length)}) OR bot_client_id IN (${inList(bots.length)})`, ...users, ...bots);
+  const orders = col(
+    `SELECT id FROM orders WHERE user_id IN (${inList(users.length)}) OR bot_client_id IN (${inList(bots.length)}) OR cart_id IN (${inList(carts.length)})`,
+    ...users, ...bots, ...carts,
+  );
+  const events = col(`SELECT id FROM events WHERE user_id IN (${inList(users.length)}) OR bot_client_id IN (${inList(bots.length)})`, ...users, ...bots);
+  const endpoints = col(`SELECT id FROM webhook_endpoints WHERE bot_client_id IN (${inList(bots.length)})`, ...bots);
+  return { users, bots, carts, orders, events, endpoints };
+}
+
+/** [table, where-clause builder] in child-first order. */
+function demoTargets(ids: Ids): [string, string, string[]][] {
+  const U = inList(ids.users.length), B = inList(ids.bots.length), C = inList(ids.carts.length);
+  const O = inList(ids.orders.length), E = inList(ids.events.length), W = inList(ids.endpoints.length);
+  const all = [...ids.users, ...ids.bots, ...ids.carts, ...ids.orders];
+  return [
+    ["webhook_deliveries", `endpoint_id IN (${W}) OR event_id IN (${E})`, [...ids.endpoints, ...ids.events]],
+    ["webhook_endpoints", `id IN (${W})`, ids.endpoints],
+    ["mcf_orders", `order_id IN (${O})`, ids.orders],
+    ["returns", `order_id IN (${O}) OR user_id IN (${U})`, [...ids.orders, ...ids.users]],
+    ["order_lines", `order_id IN (${O})`, ids.orders],
+    ["spend_ledger", `bot_client_id IN (${B}) OR user_id IN (${U}) OR cart_id IN (${C}) OR order_id IN (${O})`, [...ids.bots, ...ids.users, ...ids.carts, ...ids.orders]],
+    ["orders", `id IN (${O})`, ids.orders],
+    ["cart_lines", `cart_id IN (${C})`, ids.carts],
+    ["cart_events", `cart_id IN (${C})`, ids.carts],
+    ["inventory_reservations", `cart_id IN (${C})`, ids.carts],
+    ["approval_tokens", `cart_id IN (${C}) OR user_id IN (${U})`, [...ids.carts, ...ids.users]],
+    ["payment_attempts", `cart_id IN (${C})`, ids.carts],
+    ["payment_log", `cart_id IN (${C})`, ids.carts],
+    ["shop_pay_requests", `cart_id IN (${C}) OR user_id IN (${U})`, [...ids.carts, ...ids.users]],
+    ["carts", `id IN (${C})`, ids.carts],
+    ["events", `id IN (${E})`, ids.events],
+    ["notifications", `user_id IN (${U})`, ids.users],
+    ["auto_rules", `bot_client_id IN (${B}) OR user_id IN (${U})`, [...ids.bots, ...ids.users]],
+    ["idempotency_keys", `bot_client_id IN (${B})`, ids.bots],
+    ["audit_log", `actor_id IN (${inList(all.length)}) OR resource_id IN (${inList(all.length)})`, [...all, ...all]],
+    ["sessions", `user_id IN (${U})`, ids.users],
+    ["addresses", `user_id IN (${U})`, ids.users],
+    ["webauthn_credentials", `user_id IN (${U})`, ids.users],
+    ["webauthn_challenges", `user_id IN (${U})`, ids.users],
+    ["shop_links", `user_id IN (${U})`, ids.users],
+    ["bots", `id IN (${B}) OR user_id IN (${U})`, [...ids.bots, ...ids.users]],
+    ["users", `id IN (${U})`, ids.users],
+  ];
+}
+
+/** When demo seeding is off, hard-delete demo identities and everything that references them. Idempotent. */
+export function purgeDemoIdentities(db: DatabaseSync): void {
   if (demoSeedEnabled()) return;
-  const users = DEMO_USER_IDS.map(() => "?").join(",");
-  const bots = DEMO_BOT_IDS.map(() => "?").join(",");
-  const sessions = db.prepare(`DELETE FROM sessions WHERE user_id IN (${users})`).run(...DEMO_USER_IDS).changes;
-  const passkeys = db.prepare(`DELETE FROM webauthn_credentials WHERE user_id IN (${users})`).run(...DEMO_USER_IDS).changes;
-  const usersDisabled = db
-    .prepare(`UPDATE users SET password_hash = 'disabled' WHERE id IN (${users}) AND password_hash <> 'disabled'`)
-    .run(...DEMO_USER_IDS).changes;
-  let botsRevoked = 0;
-  for (const id of DEMO_BOT_IDS) {
-    botsRevoked += Number(db
-      .prepare(`UPDATE bots SET token_hash = ?, revoked_at = COALESCE(revoked_at, ?) WHERE id = ? AND token_hash NOT LIKE 'revoked:%'`)
-      .run(`revoked:${randomBytes(16).toString("hex")}`, nowIso(), id).changes);
+  const ids = collectDemoIds(db);
+  const deleted: string[] = [];
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const [table, where, args] of demoTargets(ids)) {
+      const n = Number(db.prepare(`DELETE FROM ${table} WHERE ${where}`).run(...args).changes);
+      if (n) deleted.push(`${table}=${n}`);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
-  if (sessions || passkeys || usersDisabled || botsRevoked) {
-    console.log(`[mercavine] demo cleanup: users_disabled=${usersDisabled} sessions_deleted=${sessions} passkeys_deleted=${passkeys} bots_revoked=${botsRevoked}`);
+  if (deleted.length) console.log(`[mercavine] demo purge deleted: ${deleted.join(" ")}`);
+  // Temporary verification: remaining rows tied to demo ids (expect 0).
+  const after = collectDemoIds(db);
+  let remaining = 0;
+  for (const [table, where, args] of demoTargets(after)) {
+    remaining += (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...args) as { n: number }).n;
   }
+  console.log(`[mercavine] demo rows remaining: ${remaining}`);
 }
