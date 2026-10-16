@@ -440,6 +440,8 @@ CREATE INDEX IF NOT EXISTS idx_email_tokens_user ON email_tokens(user_id, purpos
 `;
 
 function migrate(db: DatabaseSync): void {
+  // 1 = MCP-only connection (e.g. Grok Bot over /mcp), which cannot sign REST requests.
+  addColumn(db, "bots", "mcp_only", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "orders", "payment_provider", "TEXT NOT NULL DEFAULT 'stripe'");
   // TODO(email-verification): send a verification link and set this to 1 on confirm. Not enforced yet.
   addColumn(db, "users", "email_verified", "INTEGER NOT NULL DEFAULT 0");
