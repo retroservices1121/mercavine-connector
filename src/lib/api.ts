@@ -300,6 +300,7 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     const result = createSellerAccount(json, signedIn?.id);
     if (!result.created) return cors(201, { seller_id: result.seller.id, status: result.seller.status });
     const session = login(result.email, String(json.password ?? ""));
+    await sendVerification(result.userId);
     return cors(201, { seller_id: result.seller.id, status: result.seller.status, email_verified: false }, { "set-cookie": sessionCookie(session.token) });
   }
   if (parts[0] === "seller" && parts[1] === "dashboard" && method === "GET") {

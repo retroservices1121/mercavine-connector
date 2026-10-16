@@ -4,6 +4,7 @@ import { handleApi } from "../src/lib/api";
 import { searchNative } from "../src/lib/catalog";
 import { getDb } from "../src/lib/db";
 import { setStripeOnboardingClient, stripeCardState, type StripeAccountState } from "../src/lib/sellers";
+import { clearMailOutbox, mailOutbox } from "../src/lib/mailer";
 import { useTempDb } from "./db";
 
 const base = "http://127.0.0.1:4317";
@@ -48,7 +49,7 @@ const product = { title: "Walnut Mallet", description: "A solid walnut mallet.",
 
 describe("seller onboarding", () => {
   useTempDb();
-  beforeEach(() => { resetSignupRateLimits(); setStripeOnboardingClient(null); });
+  beforeEach(() => { resetSignupRateLimits(); setStripeOnboardingClient(null); clearMailOutbox(); });
 
   it("signs up a seller, links it to a new user, signs in, and starts in onboarding", async () => {
     const { res, cookie, json } = await signupSeller("Pat@OakPine.example");
@@ -62,6 +63,12 @@ describe("seller onboarding", () => {
     expect(row.password_hash).toMatch(/^[0-9a-f]{32}:[0-9a-f]{64}$/);
     const dash = await req("/api/v1/seller/dashboard", "GET", undefined, { cookie });
     expect((await dash.json()).seller.name).toBe("Oak & Pine Goods");
+    // Same verification email as shopper sign-up (in-memory outbox, no provider).
+    const sent = mailOutbox().filter((m) => m.to === "pat@oakpine.example");
+    expect(sent).toHaveLength(1);
+    expect(sent[0].tag).toBe("verify_email");
+    expect(sent[0].text).toMatch(/\/verify\?token=/);
+    expect((getDb().prepare(`SELECT email_verified FROM users WHERE email = ?`).get("pat@oakpine.example") as { email_verified: number }).email_verified).toBe(0);
   });
 
   it("reuses a signed-in shopper account and allows only one seller per account", async () => {
