@@ -129,7 +129,7 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
     signupRateLimit(ip);
     const { json } = await readJson(req);
-    const created = createUser({ email: json.email, password: json.password, name: json.name });
+    const created = createUser({ email: json.email, password: json.password, name: json.name, age_confirmed: json.age_confirmed });
     const session = login(created.email, String(json.password ?? ""));
     await sendVerification(created.id);
     return cors(201, { user: session.user, email_verified: false }, { "set-cookie": sessionCookie(session.token) });

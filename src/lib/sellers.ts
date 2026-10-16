@@ -149,7 +149,7 @@ export function createSellerAccount(input: Record<string, unknown>, signedInUser
     if (!user) throw new ApiError(401, "unauthorized", "Sign in again.");
     email = user.email;
   } else {
-    const made = createUser({ email: input.contact_email, password: input.password, name: contactName });
+    const made = createUser({ email: input.contact_email, password: input.password, name: contactName, age_confirmed: input.age_confirmed });
     userId = made.id;
     email = made.email;
     created = true;

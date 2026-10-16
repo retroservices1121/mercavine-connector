@@ -24,7 +24,7 @@ function sellerBody(email: string, extra: Record<string, unknown> = {}) {
   return {
     business_name: "Oak & Pine Goods", contact_name: "Pat Seller", contact_email: email, password: PW,
     phone: "555-123-4567", website: "https://oakpine.example", category: "tools", state: "VT",
-    description: "Hand tools made in Vermont.", agree_terms: true, ...extra,
+    description: "Hand tools made in Vermont.", agree_terms: true, age_confirmed: true, ...extra,
   };
 }
 
@@ -72,7 +72,7 @@ describe("seller onboarding", () => {
   });
 
   it("reuses a signed-in shopper account and allows only one seller per account", async () => {
-    const shopper = await req("/api/v1/users", "POST", { email: "shop@example.com", password: PW }, { "x-forwarded-for": "10.8.0.1" });
+    const shopper = await req("/api/v1/users", "POST", { email: "shop@example.com", password: PW, age_confirmed: true }, { "x-forwarded-for": "10.8.0.1" });
     const cookie = cookieOf(shopper);
     const before = (getDb().prepare(`SELECT COUNT(*) AS n FROM users`).get() as { n: number }).n;
     const first = await req("/api/v1/sellers/signup", "POST", sellerBody("ignored@example.com", { password: undefined }), { cookie, "x-forwarded-for": "10.8.0.2" });

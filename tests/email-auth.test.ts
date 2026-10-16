@@ -21,7 +21,7 @@ const lastMail = (to: string, tag: string) => [...mailOutbox()].reverse().find((
 const verified = (email: string) => (getDb().prepare(`SELECT email_verified FROM users WHERE email = ?`).get(email) as { email_verified: number }).email_verified;
 
 async function signup(email: string) {
-  const res = await post("/api/v1/users", { email, password: PW }, { "x-forwarded-for": `ip-${email}` });
+  const res = await post("/api/v1/users", { email, password: PW, age_confirmed: true }, { "x-forwarded-for": `ip-${email}` });
   expect(res.status).toBe(201);
   return cookieOf(res);
 }

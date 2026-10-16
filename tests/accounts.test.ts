@@ -19,7 +19,7 @@ function cookieOf(res: Response): string {
 }
 
 async function signup(email: string, ip = "10.0.0.1") {
-  const res = await post("/api/v1/users", { email, password: PW, name: "Test Shopper" }, { "x-forwarded-for": ip });
+  const res = await post("/api/v1/users", { email, password: PW, name: "Test Shopper", age_confirmed: true }, { "x-forwarded-for": ip });
   return { res, cookie: cookieOf(res) };
 }
 
@@ -48,8 +48,8 @@ describe("accounts", () => {
     expect(dup.res.status).toBe(422);
     expect(((await dup.res.json()) as { error: { code: string } }).error.code).toBe("signup_failed");
 
-    expect((await post("/api/v1/users", { email: "not-an-email", password: PW })).status).toBe(422);
-    expect((await post("/api/v1/users", { email: "short@example.com", password: "123456789" })).status).toBe(422);
+    expect((await post("/api/v1/users", { email: "not-an-email", password: PW, age_confirmed: true })).status).toBe(422);
+    expect((await post("/api/v1/users", { email: "short@example.com", password: "123456789", age_confirmed: true })).status).toBe(422);
   });
 
   it("rate-limits sign-up per client", async () => {
