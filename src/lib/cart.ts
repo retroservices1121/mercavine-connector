@@ -417,7 +417,7 @@ function insertNativeLine(db: DatabaseSync, cartId: string, offerId: string, qua
     `SELECT o.id, o.product_id, o.seller_id, o.variant_label, o.price_cents, o.currency, o.shipping_cents,
             o.eta_min_days, o.eta_max_days, o.lock_ttl_minutes, o.return_window_days, o.restocking_fee_pct,
             p.title, p.category, s.name AS seller_name, s.statement_descriptor, s.stripe_account_id, s.rating, s.rating_count
-     FROM offers o JOIN products p ON p.id = o.product_id JOIN sellers s ON s.id = o.seller_id WHERE o.id = ?`,
+     FROM offers o JOIN products p ON p.id = o.product_id JOIN sellers s ON s.id = o.seller_id WHERE o.id = ? AND s.status = 'active'`,
     offerId,
   );
   if (!offer) throw new ApiError(422, "unknown_offer", `Unknown offer ${offerId}.`, { offer_id: offerId });

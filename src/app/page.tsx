@@ -15,7 +15,7 @@ const steps = [
 
 const sellerBenefits = [
   ["Reach AI shoppers", "Shoppers ask their AI assistants to buy for them. List once and your products show up when they ask."],
-  ["A simple 3% fee, only when you sell", "No monthly plan and no listing fees. You pay only on completed sales."],
+  ["A simple 3% fee, only when you sell", "No monthly plan and no listing fees. Stripe's processing fees apply."],
   ["Paid straight to you", "Payments go through Stripe directly to your account. You stay the seller, with your own customers."],
   ["Ship your way", "Ship it yourself, or let Amazon fulfill orders you already stock there."],
 ];
@@ -69,7 +69,7 @@ export default function HomePage() {
               <p className="text-xs uppercase tracking-[0.16em] text-[#d7e7d4]">For sellers</p>
               <h2 className="mt-2 text-3xl">More sales from AI shoppers</h2>
               <p className="mt-2 text-[#d7e7d4]">List once and get found by shoppers whose assistants are ready to buy. A simple 3% fee, only when you sell.</p>
-              <Link href="/#sellers" className={`${cta} mt-5 bg-[#f4efe4] text-[var(--vine)] focus-visible:outline-[#f4efe4]`}>Sell on {cfg.brandName}</Link>
+              <Link href="/sell" className={`${cta} mt-5 bg-[#f4efe4] text-[var(--vine)] focus-visible:outline-[#f4efe4]`}>Sell on {cfg.brandName}</Link>
             </div>
           </div>
         </section>
@@ -123,9 +123,9 @@ export default function HomePage() {
                 </li>
               ))}
             </ul>
-            <a href={`mailto:${SUPPORT_EMAIL}?subject=Selling%20on%20Mercavine`} className={`${cta} mt-8 bg-[#f4efe4] text-[var(--vine)] focus-visible:outline-[#f4efe4]`}>
-              Start selling — get in touch
-            </a>
+            <Link href="/sell" className={`${cta} mt-8 bg-[#f4efe4] text-[var(--vine)] focus-visible:outline-[#f4efe4]`}>
+              Start selling
+            </Link>
           </div>
         </section>
 

@@ -13,7 +13,7 @@ export function SiteHeader({ signedIn = false }: { signedIn?: boolean }) {
         </Link>
         <nav aria-label="Main" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[var(--muted)]">
           <Link href="/#how-it-works" className="hidden sm:inline hover:text-[var(--ink)]">How it works</Link>
-          <Link href="/#sellers" className="hidden sm:inline hover:text-[var(--ink)]">Sell</Link>
+          <Link href="/sell" className="hidden sm:inline hover:text-[var(--ink)]">Sell</Link>
           <Link href="/#faq" className="hidden sm:inline hover:text-[var(--ink)]">FAQ</Link>
           {signedIn ? <Link href="/sellers" className="hover:text-[var(--ink)]">Sellers</Link> : null}
           <Link href={signedIn ? "/account" : "/login"} className="text-[var(--ink)]">

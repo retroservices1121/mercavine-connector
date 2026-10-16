@@ -449,6 +449,22 @@ function migrate(db: DatabaseSync): void {
   addColumn(db, "sellers", "prime_enrolled", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "offers", "fba_backed", "INTEGER NOT NULL DEFAULT 0");
   if (!hadFba) db.exec(`UPDATE offers SET fba_backed = 1 WHERE id = 'ofr_brass_hinge'`);
+  // Seller onboarding. Existing (catalog) sellers stay 'active'; self-serve sellers start at 'onboarding'.
+  addColumn(db, "sellers", "user_id", "TEXT REFERENCES users(id)");
+  addColumn(db, "sellers", "status", "TEXT NOT NULL DEFAULT 'active'");
+  addColumn(db, "sellers", "contact_name", "TEXT");
+  addColumn(db, "sellers", "contact_email", "TEXT");
+  addColumn(db, "sellers", "phone", "TEXT");
+  addColumn(db, "sellers", "website", "TEXT");
+  addColumn(db, "sellers", "category", "TEXT");
+  addColumn(db, "sellers", "description", "TEXT");
+  addColumn(db, "sellers", "terms_accepted_at", "TEXT");
+  addColumn(db, "sellers", "stripe_charges_enabled", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "sellers", "stripe_payouts_enabled", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "sellers", "stripe_details_submitted", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "sellers", "created_at", "TEXT");
+  addColumn(db, "products", "image_url", "TEXT");
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sellers_user ON sellers(user_id)`);
 }
 
 function addColumn(db: DatabaseSync, table: string, column: string, ddl: string): void {

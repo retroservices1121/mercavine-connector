@@ -107,7 +107,7 @@ export function searchNative(query: {
 }): ProductView[] {
   const db = getDb();
   const at = now().toISOString();
-  const clauses = ["1 = 1"];
+  const clauses = ["s.status = 'active'"];
   const params: (string | number)[] = [at];
   if (query.q?.trim()) {
     const like = `%${query.q.trim().toLowerCase()}%`;
@@ -131,7 +131,7 @@ export function searchNative(query: {
 
 export function getNativeProduct(productId: string): ProductView | undefined {
   const at = now().toISOString();
-  const rows = many<SearchRow>(getDb(), `${SELECT} WHERE p.id = ?`, at, productId);
+  const rows = many<SearchRow>(getDb(), `${SELECT} WHERE p.id = ? AND s.status = 'active'`, at, productId);
   return toProduct(rows)[0];
 }
 

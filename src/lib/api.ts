@@ -1,5 +1,6 @@
 import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
+import { assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
 import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, type LineInput } from "./cart";
@@ -273,18 +274,65 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
 
   if (parts[0] === "sellers" && parts[2] === "amazon" && parts[3] === "connect" && method === "POST") {
     assertSameOrigin(req);
-    requireUser(req);
+    const user = requireUser(req);
+    assertSellerAccess(parts[1], user.id);
     return cors(200, connectAmazonSeller(parts[1]));
   }
   if (parts[0] === "sellers" && parts[2] === "amazon" && parts[3] === "prime" && method === "POST") {
     assertSameOrigin(req);
-    requireUser(req);
+    const user = requireUser(req);
+    assertSellerAccess(parts[1], user.id);
     const { json } = await readJson(req);
     return cors(200, setPrimeEnrolled(parts[1], Boolean(json.enrolled)));
   }
   if (parts[0] === "sellers" && parts[2] === "amazon" && method === "GET" && parts.length === 3) {
-    requireUser(req);
+    const user = requireUser(req);
+    assertSellerAccess(parts[1], user.id);
     return cors(200, amazonSellerPublic(parts[1]));
+  }
+
+  if (parts[0] === "sellers" && parts[1] === "signup" && parts.length === 2 && method === "POST") {
+    assertSameOrigin(req);
+    const signedIn = sessionUserFromRequest(req);
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+    sellerSignupRateLimit(`seller:${ip}`);
+    const { json } = await readJson(req);
+    const result = createSellerAccount(json, signedIn?.id);
+    if (!result.created) return cors(201, { seller_id: result.seller.id, status: result.seller.status });
+    const session = login(result.email, String(json.password ?? ""));
+    await sendVerification(result.userId);
+    return cors(201, { seller_id: result.seller.id, status: result.seller.status, email_verified: false }, { "set-cookie": sessionCookie(session.token) });
+  }
+  if (parts[0] === "seller" && parts[1] === "dashboard" && method === "GET") {
+    const user = requireUser(req);
+    return cors(200, sellerDashboard(user.id));
+  }
+  if (parts[0] === "seller" && parts[1] === "stripe" && parts[2] === "onboard" && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    return cors(200, await startStripeOnboarding(user.id), { "cache-control": "no-store" });
+  }
+  if (parts[0] === "seller" && parts[1] === "stripe" && parts[2] === "refresh" && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    await refreshStripeStatus(user.id);
+    return cors(200, sellerDashboard(user.id));
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts.length === 2 && method === "GET") {
+    const user = requireUser(req);
+    return cors(200, { products: listSellerProducts(user.id) });
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts.length === 2 && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    const { json } = await readJson(req);
+    return cors(201, createSellerProduct(user.id, json));
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts.length === 3 && (method === "PATCH" || method === "PUT")) {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    const { json } = await readJson(req);
+    return cors(200, updateSellerProduct(user.id, parts[2], json));
   }
 
   if (parts[0] === "stripe" && parts[1] === "webhook" && method === "POST") {
