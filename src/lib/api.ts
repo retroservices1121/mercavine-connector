@@ -3,7 +3,7 @@ import { createAddress, createBot, createUser, deleteAddress, listAddresses, lis
 import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
-import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, cardSession, syncCardPayment, settleCardCart, noteCardFailure, type LineInput } from "./cart";
+import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, setApprovalBillingRegion, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, cardSession, syncCardPayment, settleCardCart, noteCardFailure, type LineInput } from "./cart";
 import { categoryLabels, brandSnapshot, searchNative } from "./catalog";
 import { config } from "./config";
 import { getDb } from "./db";
@@ -257,6 +257,12 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     const user = requireUser(req);
     const { json } = await readJson(req);
     return cors(200, { cart: changeApprovalAddress(decodeURIComponent(parts[1]), user.id, String(json.address_id ?? "")) });
+  }
+  if (parts[0] === "approvals" && parts[2] === "billing-region" && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    const { json } = await readJson(req);
+    return cors(200, { cart: setApprovalBillingRegion(decodeURIComponent(parts[1]), user.id, String(json.region ?? "")) });
   }
   if (parts[0] === "approvals" && parts[2] === "refresh" && method === "POST") {
     assertSameOrigin(req);

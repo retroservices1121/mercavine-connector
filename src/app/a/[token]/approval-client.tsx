@@ -6,6 +6,8 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatUsd } from "@/lib/money";
+import { approvalDisplay } from "@/lib/approval-view";
+import { US_REGION_CODES } from "@/lib/regions";
 
 type Line = {
   line_id: string;
@@ -45,6 +47,8 @@ export type ReviewCart = {
   saved_addresses: { id: string; label: string; city: string; region: string }[];
   order_ids: string[];
   payment_mode?: string;
+  digital_only?: boolean;
+  tax_region?: { region: string | null; source: "shipping_address" | "billing_region" | "none" };
 };
 
 function useCountdown(iso: string | null) {
@@ -74,6 +78,7 @@ export function ApprovalClient({ token, cart, hasPasskey, devStepUp }: { token: 
   const shopPay = cart.platform_fee_applies === false || cart.lane === "shop_pay";
   const count = cart.seller_groups.reduce((sum, group) => sum + group.lines.filter((line) => line.status !== "unavailable").length, 0);
   const payers = cart.seller_groups.filter((group) => group.total > 0);
+  const display = approvalDisplay(cart);
 
   async function approve() {
     setPending(true);
@@ -130,6 +135,15 @@ export function ApprovalClient({ token, cart, hasPasskey, devStepUp }: { token: 
     router.refresh();
   }
 
+  async function changeBillingRegion(region: string) {
+    await fetch(`/api/v1/approvals/${encodeURIComponent(token)}/billing-region`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ region }),
+    });
+    router.refresh();
+  }
+
   return (
     <div className="mx-auto max-w-xl px-4 pb-36 pt-6">
       <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Price held for {countdown}</p>
@@ -150,7 +164,7 @@ export function ApprovalClient({ token, cart, hasPasskey, devStepUp }: { token: 
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-sm text-[var(--muted)]">Shipping {formatUsd(group.shipping)} · Tax {formatUsd(group.tax)} · {formatUsd(group.total)}</p>
+            <p className="mt-3 text-sm text-[var(--muted)]">{display.showShipping ? `Shipping ${formatUsd(group.shipping)} · ` : "Digital delivery · "}Tax {formatUsd(group.tax)} · {formatUsd(group.total)}</p>
           </section>
         ))}
       </div>
@@ -160,6 +174,19 @@ export function ApprovalClient({ token, cart, hasPasskey, devStepUp }: { token: 
           <span>I&apos;ve reviewed the changes. Unavailable lines will not be charged.</span>
         </label>
       ) : null}
+      {display.showBillingRegion ? (
+        <section className="mt-4 rounded-3xl border border-[var(--line)] p-4">
+          <p className="text-sm">Digital order. Nothing ships, so no address is needed.</p>
+          <label className="mt-2 block text-sm">
+            Billing state (for sales tax)
+            <select className="mt-1 w-full rounded-xl border border-[var(--line)] bg-white p-2" value={cart.tax_region?.source === "none" ? "" : cart.tax_region?.region ?? ""} onChange={(event) => changeBillingRegion(event.target.value)}>
+              <option value="" disabled>Choose a state</option>
+              {US_REGION_CODES.map((code) => <option key={code} value={code}>{code}</option>)}
+            </select>
+          </label>
+        </section>
+      ) : null}
+      {display.showShipTo ? (
       <section className="mt-4 rounded-3xl border border-[var(--line)] p-4">
         <p className="text-sm">Ship to {cart.shipping_address_full?.label}</p>
         <p className="text-sm text-[var(--muted)]">
@@ -176,9 +203,10 @@ export function ApprovalClient({ token, cart, hasPasskey, devStepUp }: { token: 
           </label>
         ) : null}
       </section>
+      ) : null}
       <section className="mt-4 text-sm">
         <div className="flex justify-between"><span>Subtotal</span><span>{formatUsd(cart.totals.subtotal)}</span></div>
-        <div className="flex justify-between"><span>Shipping</span><span>{formatUsd(cart.totals.shipping)}</span></div>
+        {display.showShipping ? <div className="flex justify-between"><span>Shipping</span><span>{formatUsd(cart.totals.shipping)}</span></div> : null}
         <div className="flex justify-between"><span>Tax estimate</span><span>{formatUsd(cart.totals.tax)}</span></div>
         <div className="mt-1 flex justify-between text-lg"><span>You pay</span><span>{formatUsd(cart.totals.grand_total.amount)}</span></div>
         {payers.length > 1 ? (
@@ -210,7 +238,7 @@ export function ApprovalClient({ token, cart, hasPasskey, devStepUp }: { token: 
       {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
       <div className="fixed inset-x-0 bottom-0 border-t border-[var(--line)] bg-[var(--paper)] px-4 py-3">
         <div className="mx-auto flex max-w-xl gap-2">
-          <Button variant="vine" className="flex-1" disabled={pending || (cart.changes_pending && !ack)} onClick={approve}>
+          <Button variant="vine" className="flex-1" disabled={pending || (cart.changes_pending && !ack) || display.needsBillingRegion} onClick={approve}>
             {pending ? "Working…" : shopPay ? "Approve for Shop Pay" : "Approve & pay"}
           </Button>
           <Button variant="danger" disabled={pending} onClick={() => setShowDecline((value) => !value)}>Decline</Button>

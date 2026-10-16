@@ -44,7 +44,7 @@ export function StripeRefresher({ enabled }: { enabled: boolean }) {
   return null;
 }
 
-type Product = { product_id: string; title: string; description: string; category: string; price_cents: number; stock: number; image_url: string | null };
+type Product = { product_id: string; title: string; description: string; category: string; price_cents: number; stock: number; image_url: string | null; fulfillment_type?: "physical" | "digital" };
 const select = "flex h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm outline-none focus:border-[var(--vine)]";
 
 export function ProductForm({ categories, product, onDone }: { categories: { slug: string; label: string }[]; product?: Product; onDone?: () => void }) {
@@ -55,7 +55,7 @@ export function ProductForm({ categories, product, onDone }: { categories: { slu
   async function submit(form: FormData) {
     setPending(true);
     setError("");
-    const body = Object.fromEntries(["title", "description", "category", "price", "stock", "image_url"].map((k) => [k, form.get(k) ?? ""]));
+    const body = Object.fromEntries(["title", "description", "category", "price", "stock", "image_url", "fulfillment_type"].map((k) => [k, form.get(k) ?? ""]));
     const { ok, json } = product
       ? await call(`/api/v1/seller/products/${product.product_id}`, "PATCH", { ...body, stock: Number(body.stock) })
       : await call("/api/v1/seller/products", "POST", { ...body, stock: Number(body.stock) });
@@ -83,6 +83,13 @@ export function ProductForm({ categories, product, onDone }: { categories: { slu
           {categories.map((c) => <option key={c.slug} value={c.slug}>{c.label}</option>)}
         </select>
       </div>
+      <div className="space-y-1 sm:col-span-2">
+        <Label htmlFor={`fulfillment${p}`}>Delivery</Label>
+        <select id={`fulfillment${p}`} name="fulfillment_type" defaultValue={product?.fulfillment_type ?? "physical"} className={select}>
+          <option value="physical">Physical item (ships to the buyer)</option>
+          <option value="digital">Digital download (no shipping, no address)</option>
+        </select>
+      </div>
       <div className="space-y-1"><Label htmlFor={`image${p}`}>Image link (optional)</Label><Input id={`image${p}`} name="image_url" type="url" placeholder="https://" defaultValue={product?.image_url ?? ""} /></div>
       {error ? <p role="alert" className="text-sm text-[var(--danger)] sm:col-span-2">{error}</p> : null}
       <div className="sm:col-span-2"><Button type="submit" variant="vine" disabled={pending}>{pending ? "Saving…" : product ? "Save changes" : "Add product"}</Button></div>
@@ -97,7 +104,7 @@ export function ProductRow({ product, categories, visible }: { product: Product;
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="font-medium">{product.title}</p>
-          <p className="text-sm text-[var(--muted)]">${(product.price_cents / 100).toFixed(2)} · {product.stock} in stock · {visible ? "Live" : "Hidden until payouts are ready"}</p>
+          <p className="text-sm text-[var(--muted)]">${(product.price_cents / 100).toFixed(2)} · {product.stock} in stock · {product.fulfillment_type === "digital" ? "Digital · " : ""}{visible ? "Live" : "Hidden until payouts are ready"}</p>
         </div>
         <Button variant="outline" onClick={() => setEditing(!editing)} aria-expanded={editing}>{editing ? "Cancel" : "Edit"}</Button>
       </div>

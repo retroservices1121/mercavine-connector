@@ -342,7 +342,17 @@ export type SellerProduct = {
   price_cents: number;
   stock: number;
   image_url: string | null;
+  fulfillment_type: FulfillmentType;
 };
+
+export type FulfillmentType = "physical" | "digital";
+
+/** Defaults written to an offer for its fulfillment type. Digital: no shipping, instant, returns per seller. */
+export function fulfillmentDefaults(type: FulfillmentType) {
+  return type === "digital"
+    ? { shipping_cents: 0, eta_min_days: 0, eta_max_days: 0, return_window_days: 0 }
+    : { shipping_cents: 0, eta_min_days: 3, eta_max_days: 7, return_window_days: 30 };
+}
 
 function productInput(input: Record<string, unknown>) {
   const title = clean(input.title, 120);
@@ -358,14 +368,17 @@ function productInput(input: Record<string, unknown>) {
   if (!priceRaw || !Number.isFinite(price) || price < 50 || price > 10_000_000) throw new ApiError(422, "invalid_product", "Enter a price between $0.50 and $100,000.");
   if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) throw new ApiError(422, "invalid_product", "Enter how many you have in stock.");
   if (imageUrl && !/^https:\/\/[^\s]+$/i.test(imageUrl)) throw new ApiError(422, "invalid_product", "Image links must start with https://.");
-  return { title, description, category, imageUrl, price, stock };
+  const rawType = input.fulfillment_type ?? "physical";
+  if (rawType !== "physical" && rawType !== "digital") throw new ApiError(422, "invalid_product", "Fulfillment type must be physical or digital.");
+  const fulfillmentType = rawType as FulfillmentType;
+  return { title, description, category, imageUrl, price, stock, fulfillmentType };
 }
 
 export function listSellerProducts(userId: string): SellerProduct[] {
   const seller = requireSeller(userId);
   return many<SellerProduct>(
     getDb(),
-    `SELECT p.id AS product_id, o.id AS offer_id, p.title, p.description, p.category, o.price_cents, o.stock, p.image_url
+    `SELECT p.id AS product_id, o.id AS offer_id, p.title, p.description, p.category, o.price_cents, o.stock, p.image_url, o.fulfillment_type
      FROM products p JOIN offers o ON o.product_id = p.id WHERE p.seller_id = ? ORDER BY p.created_at DESC`,
     seller.id,
   ).map((row) => ({ ...row }));
@@ -374,6 +387,7 @@ export function listSellerProducts(userId: string): SellerProduct[] {
 export function createSellerProduct(userId: string, input: Record<string, unknown>): SellerProduct {
   const seller = requireSeller(userId);
   const v = productInput(input);
+  const d = fulfillmentDefaults(v.fulfillmentType);
   const productId = newId("prd");
   const offerId = newId("ofr");
   transaction((db) => {
@@ -381,9 +395,10 @@ export function createSellerProduct(userId: string, input: Record<string, unknow
       productId, seller.id, v.title, v.description, v.category, nowIso(), v.imageUrl);
     run(
       db,
-      `INSERT INTO offers (id, product_id, seller_id, sku, price_cents, stock, shipping_cents, eta_min_days, eta_max_days, return_window_days)
-       VALUES (?, ?, ?, ?, ?, ?, 0, 3, 7, 30)`,
+      `INSERT INTO offers (id, product_id, seller_id, sku, price_cents, stock, shipping_cents, eta_min_days, eta_max_days, return_window_days, fulfillment_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       offerId, productId, seller.id, `MV-${offerId.slice(-8).toUpperCase()}`, v.price, v.stock,
+      d.shipping_cents, d.eta_min_days, d.eta_max_days, d.return_window_days, v.fulfillmentType,
     );
   });
   return listSellerProducts(userId).find((p) => p.product_id === productId)!;
@@ -398,7 +413,13 @@ export function updateSellerProduct(userId: string, productId: string, input: Re
   transaction((db) => {
     run(db, `UPDATE products SET title = ?, description = ?, category = ?, image_url = ? WHERE id = ? AND seller_id = ?`,
       v.title, v.description, v.category, v.imageUrl, productId, seller.id);
+    const before = one<{ fulfillment_type: string }>(db, `SELECT fulfillment_type FROM offers WHERE product_id = ? AND seller_id = ?`, productId, seller.id);
     run(db, `UPDATE offers SET price_cents = ?, stock = ? WHERE product_id = ? AND seller_id = ?`, v.price, v.stock, productId, seller.id);
+    if (input.fulfillment_type !== undefined && before?.fulfillment_type !== v.fulfillmentType) {
+      const d = fulfillmentDefaults(v.fulfillmentType);
+      run(db, `UPDATE offers SET fulfillment_type = ?, shipping_cents = ?, eta_min_days = ?, eta_max_days = ?, return_window_days = ? WHERE product_id = ? AND seller_id = ?`,
+        v.fulfillmentType, d.shipping_cents, d.eta_min_days, d.eta_max_days, d.return_window_days, productId, seller.id);
+    }
   });
   return listSellerProducts(userId).find((p) => p.product_id === productId)!;
 }
