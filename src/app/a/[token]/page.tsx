@@ -7,6 +7,7 @@ import { config } from "@/lib/config";
 import { feePercentLabel, formatUsd } from "@/lib/money";
 import { ApprovalClient, type ReviewCart } from "./approval-client";
 import { RefreshButton } from "./refresh-button";
+import { CardCheckout } from "./card-checkout";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,14 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
   }
   if (view.kind === "cancelled") {
     return <Shell><h1 className="text-4xl">This request was cancelled.</h1><p className="mt-3 text-[var(--muted)]">{view.reason === "security_hold" ? "Too many failed sign-in attempts closed it." : "Your bot was told."}</p></Shell>;
+  }
+  if (view.kind === "card") {
+    return (
+      <main>
+        <header className="px-4 pt-4 text-sm"><Link href="/">{cfg.brandName}</Link></header>
+        <CardCheckout token={token} publishableKey={view.publishable_key} total={view.cart.totals.grand_total.amount} brandName={cfg.brandName} />
+      </main>
+    );
   }
   if (view.kind === "status") {
     const cart = view.cart;

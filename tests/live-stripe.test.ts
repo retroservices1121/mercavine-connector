@@ -64,6 +64,7 @@ describe("live Stripe mode", () => {
       async createExpressAccount() { return { id: "acct_1LiveTest" }; },
       async createAccountLink() { return { url: "https://connect.stripe.test/x" }; },
       async retrieveAccount(id) { return { id, charges_enabled: false, payouts_enabled: false, details_submitted: true }; },
+      async registerPaymentMethodDomain() { return { id: "pmd_test" }; },
     });
     await req("/api/v1/seller/stripe/onboard", "POST", {}, { cookie: s.cookie });
     await req("/api/v1/seller/stripe/refresh", "POST", {}, { cookie: s.cookie });

@@ -12,7 +12,7 @@ import { ApiError } from "./errors";
 import { mintApprovalSecret, newId, sha256 } from "./ids";
 import { withIdempotency, type IdemResult } from "./idempotency";
 import { applicationFee, feePercentLabel, money, taxBpsForRegion, taxCents } from "./money";
-import { buildCharge, mockSettle, settleCharges, type SellerCharge } from "./payments";
+import { applyIntentStatus, buildCharge, captureIfReady, createCardIntents, mockSettle, settleCharges, stripeCardClient, type PendingCardIntent, type SellerCharge } from "./payments";
 import { assertBotSafe } from "./redact";
 import { shopifyHandoffMessage, SPONSORED_DISCLOSURE, SPONSORED_LABEL, type ShopifyPlacement } from "./shopify";
 import { assertShopPayFee, claimShopPay, markShopPayPaid, openShopPayRequest, readShopPay, shopPayPublic, shopPayRuntime } from "./shop-pay";
@@ -942,6 +942,13 @@ export function submitCart(input: {
       approval_url: approvalUrl,
       expires_at: expires,
       auto_approved: false,
+      ...(config().paymentMode === "stripe"
+        ? {
+            payment_url: approvalUrl,
+            checkout_mode: "hosted_payment_link",
+            payment_note: "Send the shopper this link. They approve and pay on Mercavine with card, Link, Apple Pay or Google Pay. Card details never pass through the bot.",
+          }
+        : {}),
     };
     if (autoMatches(db, input.bot, cart.id) && config().paymentMode === "mock") {
       body = autoApprove(db, cart.id, input.bot, approvalUrl);
@@ -1221,6 +1228,9 @@ export function loadApproval(rawToken: string, userId: string) {
     if (cart.status === "pending_shop_pay") {
       return { kind: "status" as const, cart: toHumanCart(db, cart.id), has_passkey: hasPasskey(userId, db) };
     }
+    if (cart.status === "approved" && cart.lane !== "shop_pay" && config().paymentMode === "stripe" && !token.consumed_at) {
+      return { kind: "card" as const, cart: toHumanCart(db, cart.id), publishable_key: config().stripePublishableKey };
+    }
     if (cart.status === "expired" || (cart.status === "pending_approval" && token.expires_at < nowIso())) {
       return { kind: "expired" as const, expired_at: cart.lock_expires_at ?? token.expires_at, cart_id: cart.id };
     }
@@ -1385,11 +1395,25 @@ export async function approveCart(input: {
       run(db, `UPDATE approval_tokens SET consumed_at = ? WHERE cart_id = ? AND consumed_at IS NULL`, nowIso(), prepared.cartId);
       return {
         paid: false as const,
-        code: "shop_pay_approval",
+        code: "shop_pay_approval" as const,
         shop_pay: shopPayPublic(readShopPay(prepared.cartId)),
         cart: toHumanCart(db, prepared.cartId),
       };
     });
+  }
+  if (config().paymentMode === "stripe") {
+    let intents: PendingCardIntent[];
+    try {
+      intents = await createCardIntents(getDb(), prepared.cartId, prepared.botId, prepared.charges);
+    } catch (error) {
+      transaction((db) => {
+        const cart = mustCart(db, prepared.cartId);
+        transition(db, prepared.cartId, "payment_failed", { status_reason: "payment_failed" });
+        emit(db, { type: "cart.payment_failed", userId: cart.user_id, botId: cart.bot_client_id, cartId: cart.id, data: { cart_id: cart.id, code: error instanceof ApiError ? error.code : "processing_error" } });
+      });
+      throw error;
+    }
+    return { paid: false as const, code: "card_required" as const, payment: cardPayload(intents), cart: toHumanCart(getDb(), prepared.cartId) };
   }
   const failSeller = config().paymentMode === "mock" ? input.failSellerId : undefined;
   const settled = await settleCharges(getDb(), prepared.cartId, prepared.botId, prepared.charges, failSeller);
@@ -1416,6 +1440,71 @@ export async function approveCart(input: {
     }
     const paid = finalizePaid(db, prepared.cartId, input.method, input.userId);
     return { paid: true as const, cart: toHumanCart(db, prepared.cartId), bot: paid };
+  });
+}
+
+function cardPayload(intents: PendingCardIntent[]) {
+  return {
+    provider: "stripe",
+    publishable_key: config().stripePublishableKey,
+    intents: intents.map((i) => ({ seller_id: i.seller_id, seller_name: i.seller_name, stripe_account: i.stripe_account, amount_cents: i.amount_cents, client_secret: i.client_secret, status: i.status })),
+  };
+}
+
+function approvedCardCart(db: DatabaseSync, rawToken: string, userId: string): CartRow {
+  const token = tokenRow(db, rawToken);
+  if (!token || token.revoked_at) throw new ApiError(409, "invalid_state", "This approval link is no longer valid.");
+  if (token.user_id !== userId) throw new ApiError(403, "foreign_cart", "This request belongs to another account.");
+  return mustCart(db, token.cart_id);
+}
+
+/** Card session for an approved cart: the Payment Element mounts these client secrets (one per seller). */
+export async function cardSession(input: { rawToken: string; userId: string }) {
+  const cart = transaction((db) => approvedCardCart(db, input.rawToken, input.userId));
+  if (cart.status === "paid") return { paid: true as const, cart: toHumanCart(getDb(), cart.id) };
+  if (cart.status !== "approved" || cart.lane === "shop_pay") throw new ApiError(409, "invalid_state", `This cart is ${cart.status}.`, { status: cart.status });
+  const intents = await createCardIntents(getDb(), cart.id, cart.bot_client_id, chargesFor(getDb(), cart.id));
+  return { paid: false as const, code: "card_required", payment: cardPayload(intents) };
+}
+
+/** Called by the page after confirmPayment. Re-reads each intent from Stripe, so it works even before the webhook lands. */
+export async function syncCardPayment(input: { rawToken: string; userId: string }) {
+  const cart = transaction((db) => approvedCardCart(db, input.rawToken, input.userId));
+  const db = getDb();
+  if (cart.status === "approved") {
+    const stripe = await stripeCardClient();
+    const rows = many<{ provider_id: string; stripe_account_id: string }>(db, `SELECT provider_id, stripe_account_id FROM payment_attempts WHERE cart_id = ? AND status IN ('awaiting_payment','authorized','failed')`, cart.id);
+    for (const row of rows) {
+      const intent = await stripe.retrieveIntent(row.provider_id, { stripeAccount: row.stripe_account_id });
+      applyIntentStatus(db, intent.id, intent.status, intent.last_payment_error?.code ?? null);
+    }
+    await settleCardCart(cart.id);
+  }
+  const fresh = mustCart(db, cart.id);
+  return { paid: fresh.status === "paid", status: fresh.status, cart: toHumanCart(db, cart.id) };
+}
+
+/** Capture-and-finalize once every seller is authorized. Safe to call repeatedly (webhooks, page sync). */
+export async function settleCardCart(cartId: string): Promise<boolean> {
+  const db = getDb();
+  const cart = one<CartRow>(db, `SELECT * FROM carts WHERE id = ?`, cartId);
+  if (!cart) return false;
+  if (cart.status === "paid") return true;
+  if (cart.status !== "approved") return false;
+  if (!(await captureIfReady(db, cartId))) return false;
+  return transaction((tx) => {
+    if (mustCart(tx, cartId).status !== "approved") return true;
+    finalizePaid(tx, cartId, cart.approval_method ?? "card", cart.decided_by ?? cart.user_id);
+    return true;
+  });
+}
+
+/** Webhook: a card was declined. The Payment Element can retry the same intent; the bot is told. */
+export function noteCardFailure(cartId: string, code: string) {
+  transaction((db) => {
+    const cart = one<CartRow>(db, `SELECT * FROM carts WHERE id = ?`, cartId);
+    if (!cart) return;
+    emit(db, { type: "cart.payment_failed", userId: cart.user_id, botId: cart.bot_client_id, cartId, data: { cart_id: cartId, code } });
   });
 }
 

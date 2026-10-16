@@ -106,83 +106,112 @@ export function mockSettle(db: DatabaseSync, cartId: string, charges: SellerChar
   };
 }
 
-export async function stripeSettle(db: DatabaseSync, cartId: string, botId: string, charges: SellerCharge[]): Promise<SettleResult> {
+/** The slice of the Stripe SDK the card flow uses. Injectable so tests never reach Stripe. */
+export type CardIntent = { id: string; status: string; client_secret?: string | null; amount: number; last_payment_error?: { code?: string | null } | null };
+export type StripeCardClient = {
+  createIntent(params: Record<string, unknown>, opts: { stripeAccount: string; idempotencyKey: string }): Promise<CardIntent>;
+  retrieveIntent(id: string, opts: { stripeAccount: string }): Promise<CardIntent>;
+  captureIntent(id: string, opts: { stripeAccount: string; idempotencyKey: string }): Promise<CardIntent>;
+  cancelIntent(id: string, opts: { stripeAccount: string }): Promise<unknown>;
+};
+
+let cardOverride: StripeCardClient | null = null;
+export function setStripeCardClient(client: StripeCardClient | null) {
+  cardOverride = client;
+}
+
+export async function stripeCardClient(): Promise<StripeCardClient> {
+  if (cardOverride) return cardOverride;
   const key = config().stripeSecretKey;
   // Fail closed: Stripe mode never silently settles in mock.
   if (!key) throw new ApiError(503, "payments_unavailable", "Payments are temporarily unavailable. Nothing was charged.");
+  const Stripe = (await import("stripe")).default;
+  const stripe = new Stripe(key);
+  return {
+    createIntent: (params, opts) => stripe.paymentIntents.create(params as never, opts) as Promise<CardIntent>,
+    retrieveIntent: (id, opts) => stripe.paymentIntents.retrieve(id, {}, opts) as Promise<CardIntent>,
+    captureIntent: (id, opts) => stripe.paymentIntents.capture(id, {}, opts) as Promise<CardIntent>,
+    cancelIntent: (id, opts) => stripe.paymentIntents.cancel(id, {}, opts),
+  };
+}
+
+export type PendingCardIntent = { seller_id: string; seller_name: string; stripe_account: string; amount_cents: number; client_secret: string; status: string };
+
+/**
+ * Real card checkout. One PaymentIntent per seller, created as a direct charge on the seller's connected
+ * account with application_fee_amount (3%). No payment method is attached here: the shopper enters it in
+ * Stripe's Payment Element on the hosted approval page (cards, Link, Apple Pay, Google Pay via
+ * automatic_payment_methods). Manual capture: nothing is captured until every seller is authorized.
+ */
+export async function createCardIntents(db: DatabaseSync, cartId: string, botId: string, charges: SellerCharge[]): Promise<PendingCardIntent[]> {
   if (charges.some((c) => !c.stripeAccountId || c.stripeAccountId.startsWith("acct_mock"))) {
     throw new ApiError(422, "seller_unavailable", "A seller in this cart can't accept payments right now. Nothing was charged.");
   }
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(key);
-  const paymentMethod = process.env.STRIPE_TEST_PAYMENT_METHOD?.trim() || "pm_card_visa";
-  const authorized: { charge: SellerCharge; providerId: string }[] = [];
-  try {
-    for (const charge of charges) {
-      const intent = await stripe.paymentIntents.create(
-        {
-          amount: charge.amountCents,
-          currency: charge.currency,
-          payment_method: paymentMethod,
-          confirm: true,
-          capture_method: "manual",
-          application_fee_amount: charge.feeCents,
-          statement_descriptor_suffix: charge.statementDescriptor.slice(0, 22),
-          metadata: { cart_id: cartId, bot_client_id: botId, seller_id: charge.sellerId },
-        },
-        { stripeAccount: charge.stripeAccountId },
-      );
-      if (intent.status === "requires_action") {
-        log(db, cartId, charge.sellerId, "fail");
-        insertAttempt(db, cartId, charge, "failed", intent.id, "authentication_failed");
-        await voidAuthorized(stripe, cartId, db, authorized);
-        return { ok: false, code: "authentication_failed" };
-      }
-      if (intent.status !== "requires_capture") {
-        log(db, cartId, charge.sellerId, "fail");
-        insertAttempt(db, cartId, charge, "failed", intent.id, "card_declined");
-        await voidAuthorized(stripe, cartId, db, authorized);
-        return { ok: false, code: "card_declined" };
-      }
-      log(db, cartId, charge.sellerId, "authorize");
-      insertAttempt(db, cartId, charge, "authorized", intent.id, null);
-      authorized.push({ charge, providerId: intent.id });
+  const stripe = await stripeCardClient();
+  const out: PendingCardIntent[] = [];
+  for (const charge of charges) {
+    const existing = db
+      .prepare(`SELECT provider_id, client_secret, status FROM payment_attempts WHERE cart_id = ? AND seller_id = ? AND amount_cents = ? AND status IN ('awaiting_payment','authorized') ORDER BY created_at DESC LIMIT 1`)
+      .get(cartId, charge.sellerId, charge.amountCents) as { provider_id: string; client_secret: string; status: string } | undefined;
+    if (existing?.client_secret) {
+      out.push({ seller_id: charge.sellerId, seller_name: charge.sellerName, stripe_account: charge.stripeAccountId, amount_cents: charge.amountCents, client_secret: existing.client_secret, status: existing.status });
+      continue;
     }
-    for (const prev of authorized) {
-      await stripe.paymentIntents.capture(prev.providerId, {}, { stripeAccount: prev.charge.stripeAccountId });
-      log(db, cartId, prev.charge.sellerId, "capture");
-      run(db, `UPDATE payment_attempts SET status = 'captured' WHERE cart_id = ? AND provider_id = ?`, cartId, prev.providerId);
-    }
-    return {
-      ok: true,
-      attempts: authorized.map((item) => ({
-        sellerId: item.charge.sellerId,
-        providerId: item.providerId,
-        amountCents: item.charge.amountCents,
-        feeCents: item.charge.feeCents,
-      })),
-    };
-  } catch {
-    await voidAuthorized(stripe, cartId, db, authorized);
-    return { ok: false, code: "processing_error" };
+    const intent = await stripe.createIntent(
+      {
+        amount: charge.amountCents,
+        currency: charge.currency,
+        capture_method: "manual",
+        automatic_payment_methods: { enabled: true },
+        application_fee_amount: charge.feeCents,
+        statement_descriptor_suffix: charge.statementDescriptor.slice(0, 22),
+        metadata: { cart_id: cartId, bot_client_id: botId, seller_id: charge.sellerId },
+      },
+      { stripeAccount: charge.stripeAccountId, idempotencyKey: `mv_pi_${cartId}_${charge.sellerId}_${charge.amountCents}` },
+    );
+    if (!intent.client_secret) throw new ApiError(502, "stripe_unavailable", "Stripe did not return a payment session. Nothing was charged.");
+    insertAttempt(db, cartId, charge, "awaiting_payment", intent.id, null);
+    run(db, `UPDATE payment_attempts SET client_secret = ? WHERE provider_id = ?`, intent.client_secret, intent.id);
+    log(db, cartId, charge.sellerId, "intent");
+    out.push({ seller_id: charge.sellerId, seller_name: charge.sellerName, stripe_account: charge.stripeAccountId, amount_cents: charge.amountCents, client_secret: intent.client_secret, status: "awaiting_payment" });
   }
+  return out;
 }
 
-async function voidAuthorized(
-  stripe: { paymentIntents: { cancel: (id: string, params: object, opts: { stripeAccount: string }) => Promise<unknown> } },
-  cartId: string,
-  db: DatabaseSync,
-  authorized: { charge: SellerCharge; providerId: string }[],
-) {
-  for (const prev of authorized) {
-    try {
-      await stripe.paymentIntents.cancel(prev.providerId, {}, { stripeAccount: prev.charge.stripeAccountId });
-    } catch {
-      /* already canceled */
-    }
-    log(db, cartId, prev.charge.sellerId, "void");
-    run(db, `UPDATE payment_attempts SET status = 'voided' WHERE cart_id = ? AND provider_id = ?`, cartId, prev.providerId);
+/** Map a PaymentIntent status onto our attempt row. Idempotent: replays and out-of-order events are no-ops. */
+export function applyIntentStatus(db: DatabaseSync, intentId: string, status: string, failureCode?: string | null): string | null {
+  const row = db.prepare(`SELECT cart_id, seller_id, status FROM payment_attempts WHERE provider_id = ?`).get(intentId) as
+    | { cart_id: string; seller_id: string; status: string }
+    | undefined;
+  if (!row) return null;
+  const rank: Record<string, number> = { awaiting_payment: 0, failed: 0, authorized: 1, captured: 2, voided: 3 };
+  let next = row.status;
+  if (status === "requires_capture") next = "authorized";
+  else if (status === "succeeded") next = "captured";
+  else if (status === "canceled") next = "voided";
+  else if (status === "requires_payment_method" && failureCode) next = "failed";
+  if (next !== row.status && (rank[next] ?? 0) >= (rank[row.status] ?? 0)) {
+    run(db, `UPDATE payment_attempts SET status = ?, failure_code = ?, updated_at = ? WHERE provider_id = ?`, next, failureCode ?? null, nowIso(), intentId);
+    log(db, row.cart_id, row.seller_id, next);
   }
+  return row.cart_id;
+}
+
+/** Capture every authorized intent once all sellers in the cart are authorized. Returns true when all are captured. */
+export async function captureIfReady(db: DatabaseSync, cartId: string): Promise<boolean> {
+  const rows = db.prepare(`SELECT provider_id, stripe_account_id, status FROM payment_attempts WHERE cart_id = ? AND status != 'voided' AND status != 'failed'`).all(cartId) as {
+    provider_id: string;
+    stripe_account_id: string;
+    status: string;
+  }[];
+  if (!rows.length || rows.some((r) => r.status === "awaiting_payment")) return false;
+  const stripe = await stripeCardClient();
+  for (const r of rows.filter((x) => x.status === "authorized")) {
+    const intent = await stripe.captureIntent(r.provider_id, { stripeAccount: r.stripe_account_id, idempotencyKey: `mv_cap_${r.provider_id}` });
+    applyIntentStatus(db, r.provider_id, intent.status);
+  }
+  const after = db.prepare(`SELECT COUNT(*) AS n FROM payment_attempts WHERE cart_id = ? AND status = 'authorized'`).get(cartId) as { n: number };
+  return after.n === 0;
 }
 
 export async function settleCharges(
@@ -192,6 +221,6 @@ export async function settleCharges(
   charges: SellerCharge[],
   failSellerId?: string,
 ): Promise<SettleResult> {
-  if (config().paymentMode === "mock" || failSellerId) return mockSettle(db, cartId, charges, failSellerId);
-  return stripeSettle(db, cartId, botId, charges);
+  void botId;
+  return mockSettle(db, cartId, charges, failSellerId);
 }

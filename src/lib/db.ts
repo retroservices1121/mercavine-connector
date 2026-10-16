@@ -464,6 +464,10 @@ function migrate(db: DatabaseSync): void {
   addColumn(db, "sellers", "stripe_details_submitted", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "sellers", "created_at", "TEXT");
   addColumn(db, "products", "image_url", "TEXT");
+  addColumn(db, "sellers", "pm_domains", "TEXT");
+  addColumn(db, "payment_attempts", "client_secret", "TEXT");
+  addColumn(db, "payment_attempts", "updated_at", "TEXT");
+  db.exec(`CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, received_at TEXT NOT NULL)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sellers_user ON sellers(user_id)`);
 }
 
