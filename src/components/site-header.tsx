@@ -12,6 +12,11 @@ export function SiteHeader({ signedIn = false }: { signedIn?: boolean }) {
         <Link href="/terms">Terms</Link>
         <Link href="/privacy">Privacy</Link>
         {signedIn ? <Link href="/sellers">Sellers</Link> : null}
+        {!signedIn && (
+          <Link href="/signup" className="rounded-full bg-[var(--vine)] px-4 py-2 text-[#f4efe4]">
+            Sign up
+          </Link>
+        )}
         <Link href={signedIn ? "/account" : "/login"} className="text-[var(--ink)]">
           {signedIn ? "Account" : "Sign in"}
         </Link>
