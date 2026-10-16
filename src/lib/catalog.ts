@@ -11,8 +11,11 @@ export type OfferView = {
   price: Money;
   stock: number;
   shipping_est: { amount: number; currency: "usd"; eta: [string, string] };
-  return_policy: { window_days: number; restocking_fee_pct: number };
+  return_policy: { window_days: number; restocking_fee_pct: number; note?: string };
   fulfillment: "fba" | "merchant";
+  /** 'digital' offers need no shipping address, ship free, and deliver instantly. */
+  fulfillment_type: "physical" | "digital";
+  delivery_label?: "Instant";
   prime_delivery: boolean;
 };
 
@@ -45,6 +48,7 @@ type SearchRow = {
   fba_backed: number;
   prime_enrolled: number;
   held: number;
+  fulfillment_type: string | null;
 };
 
 /** SQL predicate for sellers whose offers shoppers may see and buy. */
@@ -76,7 +80,24 @@ function toProduct(rows: SearchRow[]): ProductView[] {
     }
     const sellable = Math.max(0, row.stock - row.held);
     const fba = row.fba_backed === 1;
+    const digital = row.fulfillment_type === "digital";
+    if (digital) {
+      product.offers.push({
+        offer_id: row.offer_id,
+        seller: { id: row.seller_id, name: row.seller_name, rating: row.rating, rating_count: row.rating_count },
+        price: money(row.price_cents),
+        stock: sellable,
+        shipping_est: { amount: 0, currency: "usd", eta: [addDays(today, 0), addDays(today, 0)] },
+        return_policy: { window_days: 0, restocking_fee_pct: 0, note: "Digital item: see seller's terms. No returns once downloaded." },
+        fulfillment: "merchant",
+        prime_delivery: false,
+        fulfillment_type: "digital",
+        delivery_label: "Instant",
+      });
+      continue;
+    }
     product.offers.push({
+      fulfillment_type: "physical",
       offer_id: row.offer_id,
       seller: { id: row.seller_id, name: row.seller_name, rating: row.rating, rating_count: row.rating_count },
       price: money(row.price_cents),
@@ -98,7 +119,7 @@ const SELECT = `
   SELECT p.id AS product_id, p.title, p.description, p.category,
          o.id AS offer_id, s.id AS seller_id, s.name AS seller_name, s.rating, s.rating_count,
          o.price_cents, o.stock, o.shipping_cents, o.eta_min_days, o.eta_max_days,
-         o.return_window_days, o.restocking_fee_pct, o.fba_backed, s.prime_enrolled,
+         o.return_window_days, o.restocking_fee_pct, o.fba_backed, s.prime_enrolled, o.fulfillment_type,
          ${heldSql()} AS held
   FROM products p
   JOIN offers o ON o.product_id = p.id

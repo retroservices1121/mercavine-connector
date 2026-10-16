@@ -467,6 +467,12 @@ function migrate(db: DatabaseSync): void {
   addColumn(db, "sellers", "pm_domains", "TEXT");
   addColumn(db, "payment_attempts", "client_secret", "TEXT");
   addColumn(db, "payment_attempts", "updated_at", "TEXT");
+  // Digital goods: additive, idempotent. Every existing row stays 'physical'.
+  addColumn(db, "offers", "fulfillment_type", "TEXT NOT NULL DEFAULT 'physical'");
+  addColumn(db, "cart_lines", "fulfillment_type", "TEXT NOT NULL DEFAULT 'physical'");
+  addColumn(db, "orders", "fulfillment_type", "TEXT NOT NULL DEFAULT 'physical'");
+  // Tax region for carts with no shipping address (all-digital). Two-letter US state code.
+  addColumn(db, "users", "billing_region", "TEXT");
   db.exec(`CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, received_at TEXT NOT NULL)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sellers_user ON sellers(user_id)`);
 }

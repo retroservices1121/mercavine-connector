@@ -11,6 +11,7 @@ import { emit, notify } from "./events";
 import { ApiError } from "./errors";
 import { mintApprovalSecret, newId, sha256 } from "./ids";
 import { withIdempotency, type IdemResult } from "./idempotency";
+import { US_REGION_CODES } from "./regions";
 import { applicationFee, feePercentLabel, money, taxBpsForRegion, taxCents } from "./money";
 import { applyIntentStatus, buildCharge, captureIfReady, createCardIntents, mockSettle, settleCharges, stripeCardClient, type PendingCardIntent, type SellerCharge } from "./payments";
 import { assertBotSafe } from "./redact";
@@ -65,6 +66,7 @@ type LineRow = {
   status: string;
   continue_url: string | null;
   placement_json: string | null;
+  fulfillment_type?: string | null;
 };
 
 type AddressRow = {
@@ -100,6 +102,7 @@ type OfferJoin = {
   stripe_account_id: string;
   rating: number;
   rating_count: number;
+  fulfillment_type: string;
 };
 
 export type LineInput = {
@@ -155,6 +158,44 @@ function plainNote(value?: string | null): string | null {
   if (!value) return null;
   const cleaned = value.replace(/https?:\/\/\S+/gi, "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 500);
   return cleaned || null;
+}
+
+export function isDigitalLine(line: { fulfillment_type?: string | null }): boolean {
+  return line.fulfillment_type === "digital";
+}
+
+/** True when any line that will be charged ships physically. Shopify / Shop Pay lines count as physical. */
+export function linesNeedAddress(lines: { fulfillment_type?: string | null; status?: string }[]): boolean {
+  const active = lines.filter((line) => line.status !== "unavailable");
+  return active.length === 0 || active.some((line) => !isDigitalLine(line));
+}
+
+/** Like addressFor, but returns null when the user has no saved address and none was requested. */
+function optionalAddressFor(db: DatabaseSync, userId: string, requested?: string | null): AddressRow | null {
+  if (requested) return addressFor(db, userId, requested);
+  return one<AddressRow>(db, `SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id LIMIT 1`, userId) ?? null;
+}
+
+function assertAddressIfNeeded(db: DatabaseSync, cartId: string) {
+  const cart = mustCart(db, cartId);
+  if (cart.shipping_address_id) return;
+  if (linesNeedAddress(linesOf(db, cartId))) {
+    throw new ApiError(422, "address_required", "Add a shipping address before checkout. Only all-digital carts can skip it.");
+  }
+}
+
+/** Tax region: shipping address, else the buyer's billing region (digital-only carts), else none. */
+function taxRegionFor(db: DatabaseSync, cart: CartRow, address: AddressRow | undefined) {
+  if (address?.region) return { region: address.region, source: "shipping_address" as const };
+  const user = one<{ billing_region: string | null }>(db, `SELECT billing_region FROM users WHERE id = ?`, cart.user_id);
+  if (user?.billing_region) return { region: user.billing_region, source: "billing_region" as const };
+  return { region: null, source: "none" as const };
+}
+
+/** An order is digital only when every charged line in it is digital. */
+function groupFulfillment(lines: LineRow[]): "digital" | "physical" {
+  const active = lines.filter((line) => line.status !== "unavailable");
+  return active.length > 0 && active.every(isDigitalLine) ? "digital" : "physical";
 }
 
 function addressFor(db: DatabaseSync, userId: string, requested?: string | null): AddressRow {
@@ -249,7 +290,8 @@ function quote(db: DatabaseSync, cart: CartRow) {
   const address = cart.shipping_address_id
     ? one<AddressRow>(db, `SELECT * FROM addresses WHERE id = ?`, cart.shipping_address_id)
     : undefined;
-  const bps = cart.lane === "shop_pay" ? 0 : taxBpsForRegion(address?.region, config().defaultTaxBps);
+  const taxRegion = taxRegionFor(db, cart, address);
+  const bps = cart.lane === "shop_pay" ? 0 : taxBpsForRegion(taxRegion.region, config().defaultTaxBps);
   const groups = new Map<string, {
     seller: { id: string; name: string; rating: number; rating_count: number; statement_descriptor: string; stripe_account_id: string };
     lines: LineRow[];
@@ -286,7 +328,7 @@ function quote(db: DatabaseSync, cart: CartRow) {
     group.lines.push(line);
     if (line.status === "unavailable") continue;
     group.subtotal += line.unit_price_cents * line.quantity;
-    group.shipping += line.shipping_cents;
+    group.shipping += isDigitalLine(line) ? 0 : line.shipping_cents;
   }
   let subtotal = 0;
   let shipping = 0;
@@ -298,7 +340,8 @@ function quote(db: DatabaseSync, cart: CartRow) {
     shipping += group.shipping;
     tax += group.tax;
   }
-  return { lines, address, taxBps: bps, groups: [...groups.values()], subtotal, shipping, tax, grand: subtotal + shipping + tax };
+  const requiresAddress = linesNeedAddress(lines);
+  return { lines, address, taxBps: bps, taxRegion, requiresAddress, digitalOnly: !requiresAddress, groups: [...groups.values()], subtotal, shipping, tax, grand: subtotal + shipping + tax };
 }
 
 function paymentStatus(cart: CartRow): "pending" | "authorized" | "paid" | "failed" | "refunded" {
@@ -332,6 +375,10 @@ export function toBotCart(db: DatabaseSync, cartId: string) {
     shipping_address: view.address
       ? { id: view.address.id, label: view.address.label, city: view.address.city, region: view.address.region }
       : null,
+    digital_only: view.digitalOnly,
+    requires_shipping_address: view.requiresAddress,
+    // 'none' means no region is known; tax falls back to DEFAULT_TAX_BPS and the human must pick a state before paying.
+    tax_region: { region: view.taxRegion.region, source: view.taxRegion.source },
     seller_groups: view.groups.map((group) => ({
       seller: { id: group.seller.id, name: group.seller.name },
       merchant_of_record: true,
@@ -343,7 +390,10 @@ export function toBotCart(db: DatabaseSync, cartId: string) {
         quantity: line.quantity,
         unit_price: line.unit_price_cents,
         status: line.status,
-        shipping_est: { amount: line.shipping_cents, eta: [addDays(today, line.eta_min_days), addDays(today, line.eta_max_days)] },
+        fulfillment_type: isDigitalLine(line) ? "digital" : "physical",
+        shipping_est: isDigitalLine(line)
+          ? { amount: 0, eta: [addDays(today, 0), addDays(today, 0)], label: "Instant" }
+          : { amount: line.shipping_cents, eta: [addDays(today, line.eta_min_days), addDays(today, line.eta_max_days)] },
       })),
       shipping: group.shipping,
       tax: group.tax,
@@ -417,7 +467,8 @@ function insertNativeLine(db: DatabaseSync, cartId: string, offerId: string, qua
     db,
     `SELECT o.id, o.product_id, o.seller_id, o.variant_label, o.price_cents, o.currency, o.shipping_cents,
             o.eta_min_days, o.eta_max_days, o.lock_ttl_minutes, o.return_window_days, o.restocking_fee_pct,
-            p.title, p.category, s.name AS seller_name, s.statement_descriptor, s.stripe_account_id, s.rating, s.rating_count
+            p.title, p.category, s.name AS seller_name, s.statement_descriptor, s.stripe_account_id, s.rating, s.rating_count,
+            o.fulfillment_type
      FROM offers o JOIN products p ON p.id = o.product_id JOIN sellers s ON s.id = o.seller_id WHERE o.id = ? AND ${sellerVisibleSql()}`,
     offerId,
   );
@@ -428,8 +479,8 @@ function insertNativeLine(db: DatabaseSync, cartId: string, offerId: string, qua
     `INSERT INTO cart_lines (
       id, cart_id, offer_id, provider, external_id, seller_id, seller_name, title, variant_label, category,
       quantity, unit_price_cents, currency, shipping_cents, eta_min_days, eta_max_days, return_window_days,
-      restocking_fee_pct, status, continue_url
-    ) VALUES (?, ?, ?, 'native', NULL, ?, ?, ?, ?, ?, ?, ?, 'usd', ?, ?, ?, ?, ?, 'quoted', NULL)`,
+      restocking_fee_pct, status, continue_url, fulfillment_type
+    ) VALUES (?, ?, ?, 'native', NULL, ?, ?, ?, ?, ?, ?, ?, 'usd', ?, ?, ?, ?, ?, 'quoted', NULL, ?)`,
     id,
     cartId,
     offer.id,
@@ -440,11 +491,12 @@ function insertNativeLine(db: DatabaseSync, cartId: string, offerId: string, qua
     offer.category,
     quantity,
     offer.price_cents,
-    offer.shipping_cents,
+    offer.fulfillment_type === "digital" ? 0 : offer.shipping_cents,
     offer.eta_min_days,
     offer.eta_max_days,
     offer.return_window_days,
     offer.restocking_fee_pct,
+    offer.fulfillment_type === "digital" ? "digital" : "physical",
   );
 }
 
@@ -541,7 +593,8 @@ export function createCart(input: {
     sweepIn(db);
     if (input.fromCartId) return cloneCart(db, input.bot, input.fromCartId, input.idempotencyKey);
     if (!input.lines?.length) throw new ApiError(422, "empty_cart", "Add at least one line.");
-    const address = addressFor(db, input.bot.user_id, input.shippingAddressId);
+    // The address is only required when a physical line is present; checked after lines are inserted.
+    const address = optionalAddressFor(db, input.bot.user_id, input.shippingAddressId);
     const id = newId("cart");
     const at = nowIso();
     run(
@@ -554,13 +607,14 @@ export function createCart(input: {
       id,
       input.bot.user_id,
       input.bot.id,
-      address.id,
+      address?.id ?? null,
       plainNote(input.note),
       input.clientReference?.slice(0, 200) ?? null,
       at,
       at,
     );
     replaceLines(db, id, input.lines);
+    assertAddressIfNeeded(db, id);
     emit(db, {
       type: "cart.created",
       userId: input.bot.user_id,
@@ -648,8 +702,10 @@ export function updateCart(input: {
       run(db, `UPDATE carts SET shipping_address_id = ? WHERE id = ?`, address.id, cart.id);
     }
     if (input.note !== undefined) run(db, `UPDATE carts SET note_for_human = ? WHERE id = ?`, plainNote(input.note), cart.id);
-    if (input.lines) replaceLines(db, cart.id, input.lines);
-    else run(db, `UPDATE carts SET version = version + 1, updated_at = ? WHERE id = ?`, nowIso(), cart.id);
+    if (input.lines) {
+      replaceLines(db, cart.id, input.lines);
+      assertAddressIfNeeded(db, cart.id);
+    } else run(db, `UPDATE carts SET version = version + 1, updated_at = ? WHERE id = ?`, nowIso(), cart.id);
     emit(db, {
       type: "cart.updated",
       userId: cart.user_id,
@@ -787,6 +843,7 @@ export function submitCart(input: {
     if (cart.lane === "shopify") return handoffShopify(db, cart);
     if (cart.lane === "shop_pay") return submitShopPay(db, cart, input);
     if (cart.status !== "draft") throw new ApiError(409, "invalid_state", "Only a draft cart can be submitted.", { status: cart.status });
+    assertAddressIfNeeded(db, cart.id);
     const current = linesOf(db, cart.id).filter((line) => line.provider === "native" && line.offer_id);
     const priceChanges: { line_id: string; offer_id: string; quoted_price: number; new_price: number }[] = [];
     const stockProblems: { line_id: string; offer_id: string; requested_qty: number; available_qty: number }[] = [];
@@ -816,8 +873,8 @@ export function submitCart(input: {
           `INSERT INTO cart_lines (
             id, cart_id, offer_id, provider, external_id, seller_id, seller_name, title, variant_label, category,
             quantity, unit_price_cents, currency, shipping_cents, eta_min_days, eta_max_days, return_window_days,
-            restocking_fee_pct, status, continue_url
-          ) VALUES (?, ?, ?, 'native', NULL, ?, ?, ?, ?, ?, ?, ?, 'usd', 0, ?, ?, ?, ?, 'unavailable', NULL)`,
+            restocking_fee_pct, status, continue_url, fulfillment_type
+          ) VALUES (?, ?, ?, 'native', NULL, ?, ?, ?, ?, ?, ?, ?, 'usd', 0, ?, ?, ?, ?, 'unavailable', NULL, '${isDigitalLine(line) ? "digital" : "physical"}')`,
           newId("cl"),
           cart.id,
           line.offer_id,
@@ -1012,8 +1069,8 @@ function finalizePaid(db: DatabaseSync, cartId: string, method: string, decidedB
       `INSERT INTO orders (
         id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents,
         tax_cents, total_cents, application_fee_cents, payment_status, stripe_payment_intent_id, stripe_account_id,
-        tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'created', 'usd', ?, ?, ?, ?, ?, 'paid', ?, ?, NULL, NULL, ?, ?, ?, ?)`,
+        tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at, fulfillment_type
+      ) VALUES (?, ?, ?, ?, ?, ?, 'created', 'usd', ?, ?, ?, ?, ?, 'paid', ?, ?, NULL, NULL, ?, ?, ?, ?, '${groupFulfillment(group.lines)}')`,
       orderId,
       cartId,
       cart.user_id,
@@ -1311,6 +1368,10 @@ export async function approveCart(input: {
     if (view.lines.some((line) => line.status === "unavailable") && !input.acknowledgedChanges) {
       throw new ApiError(422, "changes_unacknowledged", "Confirm that you reviewed the unavailable lines.");
     }
+    if (cart.lane === "native" && view.digitalOnly && view.taxRegion.source === "none") {
+      // Never charge a digital-only cart on a silent default rate: the human picks their state first.
+      throw new ApiError(422, "billing_region_required", "Choose your billing state so sales tax can be estimated.");
+    }
     if (cart.lane === "shop_pay") {
       const active = linesOf(db, cart.id).filter((line) => line.status !== "unavailable");
       if (!active.length) throw new ApiError(422, "nothing_to_charge", "Nothing left to pay.");
@@ -1587,6 +1648,24 @@ export function editPending(input: { rawToken: string; userId: string; lines: { 
   });
 }
 
+
+/** Save the buyer's billing state (used for tax when a cart has no shipping address). */
+export function setApprovalBillingRegion(rawToken: string, userId: string, region: string) {
+  return transaction((db) => {
+    const token = tokenRow(db, rawToken);
+    if (!token || token.user_id !== userId || token.consumed_at || token.revoked_at) {
+      throw new ApiError(409, "invalid_state", "This approval link is no longer valid.");
+    }
+    const cart = mustCart(db, token.cart_id);
+    if (cart.status !== "pending_approval") throw new ApiError(409, "invalid_state", "The billing state can only change before you pay.");
+    const code = region.trim().toUpperCase();
+    if (!(US_REGION_CODES as readonly string[]).includes(code)) throw new ApiError(422, "invalid_region", "Choose a US state.");
+    run(db, `UPDATE users SET billing_region = ? WHERE id = ?`, code, userId);
+    run(db, `UPDATE carts SET updated_at = ? WHERE id = ?`, nowIso(), cart.id);
+    return toHumanCart(db, cart.id);
+  });
+}
+
 export function changeApprovalAddress(rawToken: string, userId: string, addressId: string) {
   return transaction((db) => {
     const token = tokenRow(db, rawToken);
@@ -1660,8 +1739,8 @@ export async function finishShopPayForUser(cartId: string, userId: string) {
         `INSERT INTO orders (
           id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents,
           tax_cents, total_cents, application_fee_cents, payment_status, stripe_payment_intent_id, stripe_account_id,
-          tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at, payment_provider
-        ) VALUES (?, ?, ?, ?, ?, ?, 'created', 'usd', ?, ?, ?, ?, ?, 'paid', NULL, NULL, NULL, NULL, ?, ?, ?, ?, 'shop_pay')`,
+          tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at, payment_provider, fulfillment_type
+        ) VALUES (?, ?, ?, ?, ?, ?, 'created', 'usd', ?, ?, ?, ?, ?, 'paid', NULL, NULL, NULL, NULL, ?, ?, ?, ?, 'shop_pay', '${groupFulfillment(group.lines)}')`,
         orderId,
         cartId,
         cart.user_id,

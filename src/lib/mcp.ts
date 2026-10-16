@@ -65,7 +65,7 @@ export function createMcpServer() {
     "search_products",
     {
       title: "Search products",
-      description: "Search Mercavine sellers. Launch categories: home-improvement, tools, electronics-accessories. Outdoor is secondary. Lane shopify queries Shopify Catalog when SHOPIFY_CATALOG_ENABLED=true. Lane shop queries Shop's global catalog. Each result is labeled source native, shopify, or shop. Shop results are not cached.",
+      description: "Search Mercavine sellers. Launch categories: home-improvement, tools, electronics-accessories. Outdoor is secondary. Lane shopify queries Shopify Catalog when SHOPIFY_CATALOG_ENABLED=true. Lane shop queries Shop's global catalog. Each result is labeled source native, shopify, or shop. Shop results are not cached. Each native offer has fulfillment_type physical or digital; digital offers ship free, deliver instantly (delivery_label Instant), and need no shipping address.",
       inputSchema: {
         query: z.string().describe("What the shopper wants, for example brass door hinges"),
         category: z.string().optional(),
@@ -107,7 +107,7 @@ export function createMcpServer() {
     "create_cart",
     {
       title: "Create a cart",
-      description: "Create a server-side draft cart. Prices are quotes until request_checkout. Requires idempotency_key. Do not send payment details.",
+      description: "Create a server-side draft cart. Prices are quotes until request_checkout. Requires idempotency_key. Do not send payment details. shipping_address_id is needed only when a line is physical; an all-digital cart needs no address (shipping is 0 and the human confirms their billing state for tax on the approval page). Mixed carts still need an address; without one you get 422 address_required.",
       inputSchema: {
         lines: z.array(z.object({
           offer_id: z.string().optional(),
@@ -153,7 +153,7 @@ export function createMcpServer() {
     "update_cart",
     {
       title: "Update a draft cart",
-      description: "Replace lines or the saved shipping address on a draft cart. Requires idempotency_key.",
+      description: "Replace lines or the saved shipping address on a draft cart. Requires idempotency_key. Adding a physical line to a cart with no address returns 422 address_required; all-digital carts need no address.",
       inputSchema: {
         cart_id: z.string(),
         lines: z.array(z.object({
@@ -283,7 +283,7 @@ export function createMcpServer() {
     "get_order_status",
     {
       title: "Get order status",
-      description: "Status, seller, lines, totals, and tracking. When the seller connected Amazon MCF and the listing is FBA-backed, tracking can come from that fulfillment order. prime_delivery on an offer is true only when that seller is enrolled. payment_status is pending, authorized, paid, failed, or refunded. Card data is never included. Do not order on amazon.com.",
+      description: "Status, seller, lines, totals, and tracking. Digital orders (fulfillment_type digital, requires_tracking false) have no tracking or ship_eta and move to fulfilled without one. When the seller connected Amazon MCF and the listing is FBA-backed, tracking can come from that fulfillment order. prime_delivery on an offer is true only when that seller is enrolled. payment_status is pending, authorized, paid, failed, or refunded. Card data is never included. Do not order on amazon.com.",
       inputSchema: { order_id: z.string() },
     },
     async (args, extra) => tool(() => getOrder(botFromExtra(extra, "track"), args.order_id)),

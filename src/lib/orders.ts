@@ -29,6 +29,7 @@ type OrderRow = {
   tracking_number: string | null;
   ship_eta_start: string | null;
   ship_eta_end: string | null;
+  fulfillment_type?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -70,8 +71,10 @@ function present(db: DatabaseSync, order: OrderRow) {
       currency: order.currency,
     },
     payment_status: order.payment_status,
+    fulfillment_type: order.fulfillment_type === "digital" ? "digital" : "physical",
+    requires_tracking: order.fulfillment_type !== "digital",
     tracking: order.tracking_number ? { carrier: order.tracking_carrier, number: order.tracking_number } : null,
-    ship_eta: order.ship_eta_start ? [order.ship_eta_start, order.ship_eta_end] : null,
+    ship_eta: order.fulfillment_type === "digital" ? null : order.ship_eta_start ? [order.ship_eta_start, order.ship_eta_end] : null,
     created_at: order.created_at,
     updated_at: order.updated_at,
     ...(mcf
@@ -109,7 +112,7 @@ function present(db: DatabaseSync, order: OrderRow) {
 function own(db: DatabaseSync, bot: BotRecord, orderId: string): OrderRow {
   const order = one<OrderRow>(
     db,
-    `SELECT id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents, tax_cents, total_cents, payment_status, tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at FROM orders WHERE id = ?`,
+    `SELECT id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents, tax_cents, total_cents, payment_status, tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at, fulfillment_type FROM orders WHERE id = ?`,
     orderId,
   );
   if (!order || order.user_id !== bot.user_id) throw new ApiError(404, "not_found", "Order not found.");
@@ -119,8 +122,8 @@ function own(db: DatabaseSync, bot: BotRecord, orderId: string): OrderRow {
 export function listOrders(bot: BotRecord, cartId?: string) {
   return transaction((db) => {
     const rows = cartId
-      ? many<OrderRow>(db, `SELECT id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents, tax_cents, total_cents, payment_status, tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at FROM orders WHERE user_id = ? AND cart_id = ? ORDER BY created_at`, bot.user_id, cartId)
-      : many<OrderRow>(db, `SELECT id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents, tax_cents, total_cents, payment_status, tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`, bot.user_id);
+      ? many<OrderRow>(db, `SELECT id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents, tax_cents, total_cents, payment_status, tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at, fulfillment_type FROM orders WHERE user_id = ? AND cart_id = ? ORDER BY created_at`, bot.user_id, cartId)
+      : many<OrderRow>(db, `SELECT id, cart_id, user_id, bot_client_id, seller_id, seller_name, status, currency, subtotal_cents, shipping_cents, tax_cents, total_cents, payment_status, tracking_carrier, tracking_number, ship_eta_start, ship_eta_end, created_at, updated_at, fulfillment_type FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`, bot.user_id);
     return rows.map((row) => present(db, row));
   });
 }
@@ -225,5 +228,29 @@ export function markShipped(orderId: string, carrier: string, tracking: string) 
       data: { order_id: orderId, carrier, tracking },
     });
     return present(db, { ...order, status: "shipped", tracking_carrier: carrier, tracking_number: tracking });
+  });
+}
+
+/** Digital orders have nothing to ship: mark them fulfilled without a carrier or tracking number. */
+export function markDigitalFulfilled(orderId: string) {
+  return transaction((db) => {
+    const order = one<OrderRow>(db, `SELECT * FROM orders WHERE id = ?`, orderId);
+    if (!order) throw new ApiError(404, "not_found", "Order not found.");
+    if (order.fulfillment_type !== "digital") {
+      throw new ApiError(409, "tracking_required", "Physical orders are marked shipped with a carrier and tracking number.");
+    }
+    if (order.status === "fulfilled") return present(db, order);
+    if (order.status !== "created") throw new ApiError(409, "invalid_state", `This order is ${order.status}.`, { status: order.status });
+    run(db, `UPDATE orders SET status = 'fulfilled', updated_at = ? WHERE id = ?`, nowIso(), orderId);
+    emit(db, {
+      type: "order.fulfilled",
+      userId: order.user_id,
+      botId: order.bot_client_id,
+      cartId: order.cart_id,
+      resourceId: orderId,
+      actorType: "system",
+      data: { order_id: orderId, fulfillment_type: "digital" },
+    });
+    return present(db, { ...order, status: "fulfilled" });
   });
 }
