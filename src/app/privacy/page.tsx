@@ -1,6 +1,7 @@
 import { SiteFooter, SUPPORT_EMAIL } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { config } from "@/lib/config";
+import { accountDeletion, PRIVACY_EMAIL } from "@/lib/privacy-content";
 
 export const metadata = { title: "Privacy" };
 
@@ -27,6 +28,12 @@ export default function PrivacyPage() {
           <p>We don&apos;t sell your personal information, and shoppers never pay to use {cfg.brandName}.</p>
           <h2 className="text-2xl">How long we keep things</h2>
           <p>Order records are kept for tax and dispute purposes. You can disconnect your bot from your account page at any time, which also cancels its open carts.</p>
+          <h2 className="text-2xl">{accountDeletion.heading}</h2>
+          <p>
+            To delete your account, email <a className="underline" href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a> from the address on your account.
+            {" "}{accountDeletion.retention} {accountDeletion.orders}
+          </p>
+          <p>{accountDeletion.bots}</p>
           <h2 className="text-2xl">Contact</h2>
           <p>{cfg.brandName}, <a className="underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</p>
         </article>
