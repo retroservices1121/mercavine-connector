@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { listAddresses } from "@/lib/accounts";
 import { userFromSessionToken } from "@/lib/auth";
+import { isEmailVerified } from "@/lib/email-auth";
+import { VerifyBanner } from "../verify-banner";
 import { AddressManager } from "./address-manager";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +20,7 @@ export default async function AddressesPage() {
       <section className="mx-auto max-w-3xl px-5 py-8">
         <p className="text-sm"><Link href="/account" className="underline">← Account</Link></p>
         <h1 className="mt-2 text-4xl">Shipping addresses</h1>
+        {isEmailVerified(user.id) ? null : <VerifyBanner email={user.email} />}
         <div className="mt-6"><AddressManager addresses={listAddresses(user.id)} /></div>
       </section>
     </main>

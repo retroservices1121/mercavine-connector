@@ -1,3 +1,4 @@
+import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
@@ -126,7 +127,28 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     const { json } = await readJson(req);
     const created = createUser({ email: json.email, password: json.password, name: json.name });
     const session = login(created.email, String(json.password ?? ""));
+    await sendVerification(created.id);
     return cors(201, { user: session.user, email_verified: false }, { "set-cookie": sessionCookie(session.token) });
+  }
+  if (parts[0] === "users" && parts[1] === "verify" && parts[2] === "resend" && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    if (isEmailVerified(user.id)) return cors(200, { ok: true, email_verified: true });
+    await resendVerification(user.id);
+    return cors(200, { ok: true, email_verified: false });
+  }
+  if (parts[0] === "password" && parts[1] === "forgot" && method === "POST") {
+    assertSameOrigin(req);
+    const { json } = await readJson(req);
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+    await forgotPassword(json.email, ip);
+    return cors(200, { ok: true, message: "If an account exists for that email, we sent a reset link." });
+  }
+  if (parts[0] === "password" && parts[1] === "reset" && method === "POST") {
+    assertSameOrigin(req);
+    const { json } = await readJson(req);
+    resetPassword(String(json.token ?? ""), json.password);
+    return cors(200, { ok: true }, { "set-cookie": clearSessionCookie() });
   }
   if (parts[0] === "bots" && parts.length === 1 && method === "GET") {
     const user = requireUser(req);
