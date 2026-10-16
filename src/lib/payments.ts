@@ -5,6 +5,7 @@ import { ApiError } from "./errors";
 import { newId } from "./ids";
 import { platformFeeCents } from "./money";
 import { run } from "./sql";
+import { firstPartyRouting, isFirstPartySeller, PLATFORM_ACCOUNT } from "./first-party";
 
 export type SellerCharge = {
   sellerId: string;
@@ -59,6 +60,19 @@ export function buildCharge(input: {
   amountCents: number;
 }): SellerCharge {
   const bps = config().platformFeeBps;
+  if (isFirstPartySeller(input.sellerId)) {
+    // Mercavine Store: merchant of record is the platform. No application fee. See first-party.ts.
+    const route = firstPartyRouting();
+    return {
+      sellerId: input.sellerId,
+      sellerName: input.sellerName,
+      stripeAccountId: route.stripeAccountId,
+      amountCents: input.amountCents,
+      feeCents: 0,
+      currency: "usd",
+      statementDescriptor: input.statementDescriptor.slice(0, 22),
+    };
+  }
   return {
     sellerId: input.sellerId,
     sellerName: input.sellerName,
@@ -72,6 +86,10 @@ export function buildCharge(input: {
 
 /** Authorize every seller, then capture all. A failure voids any authorization already made. */
 export function mockSettle(db: DatabaseSync, cartId: string, charges: SellerCharge[], failSellerId?: string): SettleResult {
+  if (charges.some((c) => isFirstPartySeller(c.sellerId))) {
+    // The store's approval gate lives in the card flow; mock settlement would capture instantly.
+    throw new ApiError(422, "seller_unavailable", "Mercavine Store items need live card checkout. Nothing was charged.");
+  }
   const ordered = failSellerId
     ? [...charges.filter((charge) => charge.sellerId !== failSellerId), ...charges.filter((charge) => charge.sellerId === failSellerId)]
     : charges;
@@ -128,11 +146,19 @@ export async function stripeCardClient(): Promise<StripeCardClient> {
   const Stripe = (await import("stripe")).default;
   const stripe = new Stripe(key);
   return {
-    createIntent: (params, opts) => stripe.paymentIntents.create(params as never, opts) as Promise<CardIntent>,
-    retrieveIntent: (id, opts) => stripe.paymentIntents.retrieve(id, {}, opts) as Promise<CardIntent>,
-    captureIntent: (id, opts) => stripe.paymentIntents.capture(id, {}, opts) as Promise<CardIntent>,
-    cancelIntent: (id, opts) => stripe.paymentIntents.cancel(id, {}, opts),
+    createIntent: (params, opts) => stripe.paymentIntents.create(params as never, platformOpts(opts)) as Promise<CardIntent>,
+    retrieveIntent: (id, opts) => stripe.paymentIntents.retrieve(id, {}, platformOpts(opts)) as Promise<CardIntent>,
+    captureIntent: (id, opts) => stripe.paymentIntents.capture(id, {}, platformOpts(opts)) as Promise<CardIntent>,
+    cancelIntent: (id, opts) => stripe.paymentIntents.cancel(id, {}, platformOpts(opts)),
   };
+}
+
+/** Platform-account charges (first-party store) send no Stripe-Account header. */
+function platformOpts<T extends { stripeAccount?: string }>(opts: T): T {
+  if (opts.stripeAccount !== PLATFORM_ACCOUNT) return opts;
+  const rest = { ...opts };
+  delete rest.stripeAccount;
+  return rest;
 }
 
 export type PendingCardIntent = { seller_id: string; seller_name: string; stripe_account: string; amount_cents: number; client_secret: string; status: string };
@@ -146,6 +172,11 @@ export type PendingCardIntent = { seller_id: string; seller_name: string; stripe
 export async function createCardIntents(db: DatabaseSync, cartId: string, botId: string, charges: SellerCharge[]): Promise<PendingCardIntent[]> {
   if (charges.some((c) => !c.stripeAccountId || c.stripeAccountId.startsWith("acct_mock"))) {
     throw new ApiError(422, "seller_unavailable", "A seller in this cart can't accept payments right now. Nothing was charged.");
+  }
+  if (charges.some((c) => isFirstPartySeller(c.sellerId))) {
+    // Re-check live CJ stock and price before any payment session exists.
+    const { recheckCart } = await import("./cj-store");
+    await recheckCart(db, cartId);
   }
   const stripe = await stripeCardClient();
   const out: PendingCardIntent[] = [];
@@ -163,7 +194,7 @@ export async function createCardIntents(db: DatabaseSync, cartId: string, botId:
         currency: charge.currency,
         capture_method: "manual",
         automatic_payment_methods: { enabled: true },
-        application_fee_amount: charge.feeCents,
+        ...(charge.feeCents > 0 ? { application_fee_amount: charge.feeCents } : {}),
         statement_descriptor_suffix: charge.statementDescriptor.slice(0, 22),
         metadata: { cart_id: cartId, bot_client_id: botId, seller_id: charge.sellerId },
       },
@@ -205,6 +236,12 @@ export async function captureIfReady(db: DatabaseSync, cartId: string): Promise<
     status: string;
   }[];
   if (!rows.length || rows.some((r) => r.status === "awaiting_payment")) return false;
+  const { cartHasFirstParty, queueForApproval, captureAllowed } = await import("./cj-store");
+  if (cartHasFirstParty(db, cartId) && !captureAllowed(db, cartId)) {
+    // Mercavine Store orders wait, authorized but uncaptured, for an admin to approve.
+    queueForApproval(db, cartId);
+    return false;
+  }
   const stripe = await stripeCardClient();
   for (const r of rows.filter((x) => x.status === "authorized")) {
     const intent = await stripe.captureIntent(r.provider_id, { stripeAccount: r.stripe_account_id, idempotencyKey: `mv_cap_${r.provider_id}` });

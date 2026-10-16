@@ -469,6 +469,19 @@ function migrate(db: DatabaseSync): void {
   addColumn(db, "payment_attempts", "updated_at", "TEXT");
   db.exec(`CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, received_at TEXT NOT NULL)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sellers_user ON sellers(user_id)`);
+  // First-party Mercavine Store + CJdropshipping supplier tables.
+  addColumn(db, "sellers", "first_party", "INTEGER NOT NULL DEFAULT 0");
+  db.exec(`CREATE TABLE IF NOT EXISTS supplier_products (
+    pid TEXT PRIMARY KEY, vid TEXT NOT NULL, supplier TEXT NOT NULL, name TEXT NOT NULL, category_id TEXT,
+    cost_cents INTEGER NOT NULL, freight_cents INTEGER NOT NULL, logistic_name TEXT, us_stock INTEGER NOT NULL,
+    price_cents INTEGER NOT NULL, status TEXT NOT NULL, last_synced_at TEXT NOT NULL, created_at TEXT NOT NULL)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS supplier_product_map (
+    offer_id TEXT PRIMARY KEY REFERENCES offers(id), pid TEXT NOT NULL REFERENCES supplier_products(pid), vid TEXT NOT NULL)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_spm_pid ON supplier_product_map(pid)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS supplier_orders (
+    id TEXT PRIMARY KEY, cart_id TEXT NOT NULL UNIQUE, order_id TEXT, supplier TEXT NOT NULL, status TEXT NOT NULL,
+    dedupe_key TEXT NOT NULL UNIQUE, cj_order_id TEXT, cj_status TEXT, tracking_number TEXT, tracking_url TEXT,
+    request_json TEXT, detail TEXT, approved_by TEXT, approved_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
 }
 
 function addColumn(db: DatabaseSync, table: string, column: string, ddl: string): void {

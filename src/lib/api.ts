@@ -100,6 +100,8 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
   const method = req.method.toUpperCase();
   const rawBody = method === "GET" || method === "DELETE" ? "" : (await req.clone().text());
 
+  if (parts[0] === "admin") return adminRoute(req, method, parts.slice(1));
+
   if (parts[0] === "session" && method === "POST") {
     assertSameOrigin(req);
     const { json } = await readJson(req);
@@ -541,4 +543,35 @@ function openApi() {
 
 export function sessionUserFromRequest(req: Request) {
   return userFromSessionToken(readCookie(req, "mv_session"));
+}
+
+/**
+ * Admin API for the Mercavine Store (CJdropshipping). Bearer MERCAVINE_ADMIN_TOKEN; 404 when unset.
+ * Cron hits sync/refresh/tracking; a human approves or rejects held orders.
+ */
+async function adminRoute(req: Request, method: string, parts: string[]): Promise<Response> {
+  const expected = process.env.MERCAVINE_ADMIN_TOKEN?.trim();
+  if (!expected || expected.length < 24) throw new ApiError(404, "not_found", "Not found.");
+  const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const { timingSafeEqual, createHash } = await import("node:crypto");
+  const h = (v: string) => createHash("sha256").update(v).digest();
+  if (!timingSafeEqual(h(got), h(expected))) throw new ApiError(401, "unauthorized", "Admin token required.");
+  const store = await import("./cj-store");
+  const { json } = method === "POST" ? await readJson(req) : { json: {} as Record<string, unknown> };
+  const admin = String(json.admin ?? "admin").slice(0, 64);
+  if (parts[0] === "cj" && method === "POST" && parts[1] === "sync") return cors(200, await store.syncCatalog({ maxNew: Number(json.max_new ?? 50) }));
+  if (parts[0] === "cj" && method === "POST" && parts[1] === "refresh") return cors(200, await store.refreshAll(Number(json.limit ?? 100)));
+  if (parts[0] === "cj" && method === "POST" && parts[1] === "tracking") return cors(200, await store.syncTracking());
+  if (parts[0] === "cj" && method === "GET" && parts[1] === "status") {
+    const { pointsUsedToday, cjConfigured } = await import("./cj");
+    const cfg = store.storeConfig();
+    return cors(200, { configured: cjConfigured(), points_today: pointsUsedToday(), orders_live: cfg.ordersLive, margin_bps: cfg.marginBps, min_price_cents: cfg.minPriceCents });
+  }
+  if (parts[0] === "supplier-orders" && method === "GET" && parts.length === 1) return cors(200, { data: store.listSupplierOrders() });
+  if (parts[0] === "supplier-orders" && method === "POST" && parts[2] === "approve") return cors(200, await store.approveSupplierOrder(parts[1], admin));
+  if (parts[0] === "supplier-orders" && method === "POST" && parts[2] === "reject") {
+    await store.rejectSupplierOrder(parts[1], admin, String(json.reason ?? ""));
+    return cors(200, { id: parts[1], status: "rejected" });
+  }
+  throw new ApiError(404, "not_found", "Not found.");
 }
