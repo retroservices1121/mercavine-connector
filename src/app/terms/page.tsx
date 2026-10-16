@@ -1,18 +1,7 @@
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { termsPlaceholder } from "@/lib/terms-placeholders";
 
 export const metadata = { title: "Terms and Conditions" };
-
-/** Highlighted, unconfirmed legal/business fact. ids live in src/lib/terms-placeholders.ts. */
-function Ph({ id }: { id: string }) {
-  const p = termsPlaceholder(id);
-  return (
-    <mark data-placeholder={p.id} title={p.note || p.label} className="rounded bg-yellow-200 px-1 font-medium text-[var(--ink)]">
-      [[PLACEHOLDER: {p.label}]]
-    </mark>
-  );
-}
 
 const sections: [string, string][] = [
   ["acceptance", "Acceptance of these terms"],
@@ -26,16 +15,16 @@ const sections: [string, string][] = [
   ["orders", "Orders, pricing errors and cancellations"],
   ["shipping", "Shipping"],
   ["returns", "Returns and refunds"],
-  ["conduct", "Prohibited conduct"],
-  ["ip", "Intellectual property and content license"],
+  ["conduct", "Policies, prohibited items and conduct"],
+  ["ip", "Intellectual property and copyright agent"],
   ["third-party", "Third-party services"],
-  ["fraud", "Fraud prevention and suspension"],
+  ["fraud", "Suspension and appeals"],
   ["termination", "Termination"],
   ["disclaimers", "Disclaimers"],
   ["liability", "Limitation of liability"],
   ["indemnification", "Indemnification"],
-  ["disputes", "Dispute resolution"],
-  ["governing-law", "Governing law"],
+  ["disputes", "Dispute resolution and arbitration"],
+  ["governing-law", "Governing law and venue"],
   ["changes", "Changes to these terms"],
   ["notices", "Notices"],
   ["misc", "Miscellaneous"],
@@ -77,15 +66,6 @@ export default function TermsPage() {
           </div>
         </section>
 
-        <div className="mx-auto max-w-6xl px-5 pt-8 md:px-10">
-          <div role="note" className="rounded-3xl border-2 border-[var(--copper)] bg-[#fbeee3] p-5">
-            <p className="display text-xl text-[var(--copper)]">Draft, pending legal review</p>
-            <p className="mt-1 text-sm">
-              These terms are a working draft and are not yet final. Items marked <mark className="rounded bg-yellow-200 px-1">[[PLACEHOLDER: …]]</mark> still
-              need to be confirmed. Nothing here is legal advice.
-            </p>
-          </div>
-        </div>
 
         <div className="mx-auto grid max-w-6xl gap-8 px-5 py-8 md:grid-cols-[240px_1fr] md:px-10">
           <nav aria-label="Table of contents" className="md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] md:self-start md:overflow-y-auto">
@@ -144,41 +124,58 @@ export default function TermsPage() {
               </ul>
             </Section>
 
-            <Section id="seller-terms" summary="List honest products you're allowed to sell. Mercavine takes a simple 3% fee, only when you sell, and Stripe's processing fees apply. You handle shipping, taxes, and returns.">
-              <p><strong>Eligibility.</strong> <Ph id="seller_eligibility" /></p>
-              <p><strong>Listings.</strong> Listings must be accurate, including title, description, price, stock, and images, and you must have the right to sell what you list. Keep stock and prices up to date.</p>
-              <p><strong>Prohibited items.</strong> You may not list illegal items or regulated goods, including firearms and hazardous materials. Full list: <Ph id="prohibited_items" />.</p>
-              <p><strong>Fees.</strong> Mercavine takes a simple 3% fee, only when you sell. The fee is taken from each completed sale charged through Mercavine, before your payout, and is not added to the shopper&apos;s total. Stripe&apos;s processing fees apply separately. We will give <Ph id="fee_change_notice" /> before changing our fee.</p>
-              <p><strong>Stripe.</strong> Payments are processed by Stripe through a Stripe connected account in your name. By selling on Mercavine you agree to the <a href="https://stripe.com/connect-account/legal" className="underline">Stripe Connected Account Agreement</a>, which includes the Stripe Services Agreement. You must complete Stripe&apos;s verification before your listings are shown to shoppers.</p>
-              <p><strong>Payouts.</strong> <Ph id="payout_timing" /></p>
-              <p><strong>Taxes.</strong> <Ph id="tax_responsibility" /></p>
-              <p><strong>Fulfillment.</strong> You are responsible for shipping orders promptly and as described: <Ph id="seller_fulfillment_sla" />. If you connect Amazon Multi-Channel Fulfillment, eligible orders may ship from your Amazon inventory; your agreements with Amazon also apply.</p>
-              <p><strong>Returns and refunds.</strong> You must honor the return policy shown on your listings and the returns section below.</p>
+            <Section id="seller-terms" summary="Sellers run their own business on Mercavine. You are the seller of record and are responsible for your products, shipping, returns, refunds and taxes. Mercavine takes 3% on Stripe sales and nothing on Shop Pay orders.">
+              <p><strong>Mercavine is a venue.</strong> Mercavine provides the place and tools that let shoppers and their AI assistants find and buy from independent sellers. Mercavine is not the seller, buyer, or merchant of record for any sale, and is not a party to the contract of sale between a shopper and a seller.</p>
+              <p><strong>Eligibility.</strong> To sell, you must be at least 18, be able to form a binding contract, provide accurate business and identity information, and complete and keep in good standing the verification that Stripe requires for your connected account. We may decline or remove a seller account in line with the Suspension and appeals section.</p>
+              <p><strong>Listings.</strong> You are solely responsible for your listings, including titles, descriptions, images, prices, stock, shipping terms, return policy, and any required legal disclosures or warnings. Listings must be accurate, lawful and kept up to date, and you must have every right needed to sell what you list. Listings must follow the Policies section below.</p>
+              <p><strong>Your responsibilities.</strong> You alone are responsible for fulfilling orders; shipping and delivery; returns, refunds, exchanges and cancellations; product quality, safety, authenticity and warranties; customer service for your sales; and compliance with all laws that apply to your products and business.</p>
+              <p><strong>Fees.</strong> For orders paid through Mercavine&apos;s Stripe checkout, Mercavine charges a platform fee of 3% of each completed sale, deducted before your payout and not added to the shopper&apos;s total. Stripe&apos;s processing fees are separate and are charged under your Stripe agreement. Orders paid with Shop Pay carry no Mercavine fee. We will give you at least 30 days&apos; notice before increasing our fee.</p>
+              <p><strong>Stripe.</strong> Payments are processed by Stripe through a Stripe connected account in your name. By selling on Mercavine you agree to the <a href="https://stripe.com/connect-account/legal" className="underline">Stripe Connected Account Agreement</a>, which includes the Stripe Services Agreement.</p>
+              <p><strong>Payouts.</strong> Sale proceeds, less Mercavine&apos;s fee, are paid out to your bank account by Stripe on your Stripe payout schedule. Stripe or Mercavine may delay or hold payouts where Stripe&apos;s terms allow, or under the Suspension and appeals section.</p>
+              <p><strong>Taxes.</strong> You are responsible for determining, collecting, reporting and paying all taxes on your sales, including sales, use and value-added taxes, except where a law specifically requires Mercavine to collect or remit a tax as a marketplace facilitator, in which case we will tell you.</p>
+              <p><strong>Fulfillment.</strong> You must ship within the handling time stated on your listing, or within 3 business days if none is stated, and provide tracking where available. If you can&apos;t fulfill an order, cancel it promptly so the shopper is refunded. If you connect Amazon Multi-Channel Fulfillment, eligible orders may ship from your Amazon inventory, and your agreements with Amazon also apply.</p>
             </Section>
 
-            <Section id="payments" summary="Payments run through Stripe, and Shop Pay is supported for some stores. Mercavine doesn't store your card.">
-              <p>Card payments for Mercavine sellers are processed by Stripe. Some products from Shopify stores may be paid with Shop Pay, where you approve the purchase in Shop Pay and that store&apos;s checkout applies. Mercavine does not store your full card details.</p>
-              <p>If a payment fails or is reversed, the order may be cancelled. Chargebacks and payment disputes: <Ph id="chargeback_handling" />.</p>
+            <Section id="payments" summary="You pay the seller. Mercavine collects payment on the seller's behalf through Stripe, or the seller's Shopify store handles it with Shop Pay. Mercavine doesn't store your card.">
+              <p><strong>How payment works.</strong> When you pay through Mercavine&apos;s checkout, the charge is made by Stripe on behalf of the seller, and the seller is the merchant of record. Mercavine acts only as a limited agent of the seller for collecting payment; once your payment succeeds, you have paid the seller. For some Shopify stores you may pay with Shop Pay, in which case the store&apos;s own checkout and terms apply.</p>
+              <p><strong>Card details.</strong> Mercavine does not store your full card details, and connected bots never receive them.</p>
+              <p><strong>Failed and reversed payments.</strong> If a payment fails or is reversed, the order may be cancelled.</p>
+              <p><strong>Chargebacks.</strong> Because the seller is merchant of record, chargebacks and payment disputes are the seller&apos;s responsibility. Sellers must respond to them through Stripe and bear any resulting losses and dispute fees. Mercavine may share order information with the seller and Stripe to help resolve a dispute.</p>
             </Section>
 
-            <Section id="orders" summary="Prices and stock can change until you approve. Obvious pricing errors may be cancelled, and you'll be told.">
-              <p>Prices and stock are held for a limited time once a cart is ready for checkout. After that, they may change.</p>
-              <p><strong>Pricing errors.</strong> <Ph id="pricing_error_policy" /></p>
-              <p><strong>Cancellations.</strong> You may cancel an order within <Ph id="cancellation_window" />, if it hasn&apos;t shipped. A seller may cancel an order it can&apos;t fulfill; you will be refunded for any amount charged.</p>
+            <Section id="orders" summary="Your order is a purchase from the seller. Sellers handle cancellations and may cancel orders with obvious pricing errors.">
+              <p><strong>Placing an order.</strong> When you approve checkout, you make an offer to buy from the seller on the terms shown. The contract is between you and the seller; it is formed when the seller accepts or ships the order.</p>
+              <p><strong>Prices and stock.</strong> Prices and stock come from sellers and are held for a limited time once a cart is ready for checkout; after that, they may change.</p>
+              <p><strong>Pricing errors.</strong> If a listing has an obvious error in price or description, the seller may cancel the order before it ships, and any amount charged will be refunded.</p>
+              <p><strong>Cancellations.</strong> To cancel an order, contact the seller. Whether an order can be cancelled after you approve it is up to the seller&apos;s policy and whether it has shipped. A seller may cancel an order it can&apos;t fulfill, and you will be refunded for any amount charged.</p>
             </Section>
 
-            <Section id="shipping" summary="Sellers ship your order. Estimated delivery dates are estimates.">
-              <p>Shipping costs and estimated delivery dates are shown at checkout. Estimates are not guarantees. We ship to: <Ph id="shipping_regions" />.</p>
-              <p>Lost or damaged packages: <Ph id="lost_package_policy" />.</p>
+            <Section id="shipping" summary="Sellers ship your order and are responsible for it until it's delivered. Contact the seller about delivery problems.">
+              <p>Each seller decides where it ships and sets its own shipping costs, methods and handling times, which are shown on the listing or at checkout. Delivery dates are estimates, not guarantees.</p>
+              <p>Mercavine does not ship products. Questions about delivery, delays, or lost or damaged packages go to the seller, who is responsible for the order until it is delivered and for any claim with its carrier.</p>
             </Section>
 
-            <Section id="returns" summary="Each listing shows its return policy. Here's how returns and refunds work across Mercavine.">
-              <p>Unless a listing says otherwise, you may request a return within <Ph id="refund_window" />. Return shipping is paid by: <Ph id="return_shipping_payer" />.</p>
-              <p>Who is responsible for refunds: <Ph id="marketplace_refund_policy" />.</p>
-              <p>Approved refunds go back to the original payment method.</p>
+            <Section id="returns" summary="Returns and refunds are handled by the seller under the seller's own return policy. Contact the seller directly.">
+              <p>Each seller sets its own return and refund policy, shown on its listings, and must follow any return or refund rights the law gives you. That policy decides the return window and who pays return shipping.</p>
+              <p>To request a return or refund, contact the seller directly. Mercavine does not accept returns, issue refunds for sellers, or decide return requests, though we may pass your message along or help you reach the seller.</p>
+              <p>Refunds approved by the seller go back to the original payment method. Mercavine&apos;s platform fee on a refunded order may be retained unless we choose to return it.</p>
             </Section>
 
-            <Section id="conduct" summary="Don't misuse Mercavine, other people's accounts, or our systems.">
+            <Section id="conduct" summary="Follow our policies: no prohibited items, no fraud, and no misuse of Mercavine or its systems.">
+              <p>You must follow these Terms and any policies we publish on the Service, which form part of these Terms.</p>
+              <p><strong>Prohibited items.</strong> Sellers may not list or sell:</p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Anything illegal where it is sold or shipped, or stolen goods.</li>
+                <li>Firearms, ammunition, firearm parts, explosives and other weapons.</li>
+                <li>Illegal, prescription or controlled drugs, drug paraphernalia, and cannabis or THC products.</li>
+                <li>Tobacco, vaping products and alcohol.</li>
+                <li>Hazardous materials, recalled products, and products that fail applicable safety rules.</li>
+                <li>Counterfeit or infringing goods, and items that violate anyone&apos;s intellectual property or privacy.</li>
+                <li>Adult sexual content, and content that promotes hate, violence or the exploitation of others.</li>
+                <li>Live animals, human remains or body parts, and endangered species products.</li>
+                <li>Gift cards, currency, securities, and digital services that Stripe doesn&apos;t allow, and anything else prohibited by Stripe&apos;s restricted businesses list.</li>
+              </ul>
+              <p><strong>Prohibited conduct.</strong></p>
               <ul className="list-disc space-y-1 pl-5">
                 <li>No fraud, fake orders, fake reviews, or misleading listings.</li>
                 <li>No accessing accounts, bots, or data that aren&apos;t yours.</li>
@@ -187,59 +184,58 @@ export default function TermsPage() {
               </ul>
             </Section>
 
-            <Section id="ip" summary="Mercavine's brand and software are ours. Sellers keep their content but let us show it to shoppers and their bots.">
+            <Section id="ip" summary="Mercavine's brand and software are ours. Sellers keep their content but let us show it. Report infringement to our copyright agent.">
               <p>The Mercavine name, logo, and Service are owned by Mercavine. You may not use them without permission, except to describe the Service accurately.</p>
               <p>Sellers keep ownership of their listing content and grant Mercavine a non-exclusive, worldwide, royalty-free license to host, display, adapt for display, and share it with shoppers and their connected bots to operate and promote the Service.</p>
-              <p>To report content that infringes your rights, contact our designated agent: <Ph id="dmca_agent" />.</p>
+              <p><strong>Copyright and infringement notices.</strong> If you believe content on the Service infringes your copyright or other rights, send a notice to: Mercavine Copyright Agent, <a href="mailto:privacy@mercavine.com" className="underline">privacy@mercavine.com</a>. Include your contact details, a description of the work and of the material you say infringes it (with its location on the Service), a statement that you believe in good faith the use is not authorized, a statement that the notice is accurate and, under penalty of perjury, that you are the owner or authorized to act for the owner, and your physical or electronic signature. A seller whose content is removed may send a counter-notice to the same address. We remove infringing content and terminate repeat infringers in appropriate circumstances.</p>
             </Section>
 
             <Section id="third-party" summary="Some parts of Mercavine rely on other companies, and their terms apply too.">
               <p>The Service works with third parties such as Stripe, Shopify and Shop Pay, Amazon, email providers, and AI assistants such as Grok. Their services are governed by their own terms and privacy policies, and Mercavine is not responsible for them.</p>
             </Section>
 
-            <Section id="fraud" summary="We may pause accounts, bots, listings, or orders to stop fraud or abuse.">
-              <p>We may review, hold, or cancel orders, limit or suspend accounts, bots, or listings, or pause payouts as allowed by Stripe&apos;s terms, when we reasonably suspect fraud, abuse, or a breach of these Terms.</p>
-              <p>Notice and appeal: <Ph id="suspension_process" /></p>
+            <Section id="fraud" summary="We may limit or suspend accounts, bots, listings or orders to protect the marketplace. We'll tell you why, and you can appeal.">
+              <p><strong>What we may do.</strong> We may review, hold or cancel orders; remove listings; limit, suspend or close accounts or bots; or hold payouts where Stripe&apos;s terms allow, if we reasonably believe there is fraud, abuse, risk to shoppers or to Mercavine, a breach of these Terms or our policies, or a legal requirement.</p>
+              <p><strong>Notice.</strong> Unless the law, an investigation, or a safety risk prevents it, we will tell you by email what action we took and why.</p>
+              <p><strong>Appeals.</strong> You may appeal within 30 days by emailing <a href="mailto:support@mercavine.com" className="underline">support@mercavine.com</a> with your account email and any information that supports your appeal, such as a plan to fix the issue. We aim to respond within 14 days. Our decision on appeal is final, without limiting your rights under the Dispute resolution section.</p>
             </Section>
 
             <Section id="termination" summary="You can leave anytime. We can end access for breaches, or with notice otherwise.">
-              <p>You may stop using the Service and close your account at any time. We may suspend or end your access immediately for serious breaches of these Terms, or otherwise with <Ph id="termination_notice" />.</p>
+              <p>You may stop using the Service and close your account at any time. We may suspend or end your access immediately for serious breaches of these Terms, or otherwise with at least 30 days&apos; notice. Sellers must still fulfill, or cancel and refund, open orders after termination.</p>
               <p>Sections that by their nature should survive (such as fees owed, disclaimers, limitation of liability, indemnification, and dispute resolution) survive termination.</p>
             </Section>
 
             <Section id="disclaimers" summary="We work hard to keep Mercavine running well, but we can't promise it will be perfect.">
-              <p>To the fullest extent the law allows, the Service is provided &ldquo;as is&rdquo; and &ldquo;as available,&rdquo; without warranties of any kind. Products are sold by sellers, and any product warranty comes from the seller or manufacturer. Results produced by AI assistants may be inaccurate; review your cart before you approve.</p>
+              <p>To the fullest extent the law allows, the Service is provided &ldquo;as is&rdquo; and &ldquo;as available,&rdquo; without warranties of any kind. Products are sold by sellers, and Mercavine makes no promise about any product, listing, seller or shopper. Any product warranty comes from the seller or manufacturer. Results produced by AI assistants may be inaccurate; review your cart before you approve.</p>
             </Section>
 
             <Section id="liability" summary="If something goes wrong, there are limits on what Mercavine can be held liable for.">
-              <p>To the fullest extent the law allows, Mercavine is not liable for indirect, incidental, special, consequential, or punitive damages. Our total liability for any claim is limited to <Ph id="liability_cap" />. Some places don&apos;t allow these limits, so they may not apply to you.</p>
+              <p>To the fullest extent the law allows, Mercavine is not liable for indirect, incidental, special, consequential, or punitive damages, or for the products, acts or omissions of sellers, shoppers or third parties. Our total liability for any claim is limited to the greater of the fees you paid Mercavine in the 12 months before the claim or US$100. Some places don&apos;t allow these limits, so they may not apply to you.</p>
             </Section>
 
             <Section id="indemnification" summary="If your actions cause a legal claim against Mercavine, you agree to cover it.">
-              <p>You agree to defend and indemnify Mercavine against claims, losses, and costs arising from your breach of these Terms, your misuse of the Service, your bot&apos;s actions within the permissions you granted, or, for sellers, your products and listings.</p>
+              <p>You agree to defend and indemnify Mercavine against claims, losses, and costs arising from your breach of these Terms, your misuse of the Service, your bot&apos;s actions within the permissions you granted, or, for sellers, your products, listings, fulfillment, refunds and taxes.</p>
             </Section>
 
-            <Section id="disputes" summary="Let's try to work things out first. If we can't, here's how disputes are resolved.">
-              <p>Please contact us first so we can try to resolve the issue informally.</p>
-              <ul className="list-disc space-y-1 pl-5">
-                <li>Method: <Ph id="dispute_method" /></li>
-                <li>Provider and rules: <Ph id="arbitration_provider" /></li>
-                <li>Class-action waiver: <Ph id="class_action_waiver" /></li>
-                <li>Small-claims court: <Ph id="small_claims_carveout" /></li>
-                <li>Opting out: <Ph id="arbitration_opt_out" /></li>
-              </ul>
+            <Section id="disputes" summary="Disputes with a seller about an order go to the seller. For disputes with Mercavine, contact us first; if we can't resolve it, it goes to individual binding arbitration in North Carolina, with small claims allowed.">
+              <p><strong>Disputes with sellers.</strong> Disputes about a product or order are between you and the seller. Mercavine may, but does not have to, help you reach a resolution.</p>
+              <p><strong>Informal resolution.</strong> Before filing a claim against Mercavine, email <a href="mailto:privacy@mercavine.com" className="underline">privacy@mercavine.com</a> describing the dispute and what you want. We will both try in good faith to resolve it within 60 days.</p>
+              <p><strong>Binding arbitration.</strong> Any dispute or claim between you and Mercavine relating to the Service or these Terms that isn&apos;t resolved informally will be resolved by binding individual arbitration administered by the American Arbitration Association (AAA) under its Consumer Arbitration Rules (or its Commercial Arbitration Rules for disputes with sellers acting as a business). The arbitration will be seated in North Carolina, and may be held by video or phone. The Federal Arbitration Act governs this section. Judgment on the award may be entered in any court with jurisdiction.</p>
+              <p><strong>Small claims.</strong> Either party may instead bring an individual claim in small claims court in North Carolina if it qualifies.</p>
+              <p><strong>Class action waiver.</strong> Claims may be brought only individually, not as a plaintiff or class member in any class, collective, consolidated or representative proceeding, and the arbitrator may not combine claims of more than one person. If this waiver is found unenforceable for a claim, that claim will be heard in court under the Governing law and venue section, not in arbitration.</p>
+              <p><strong>Opting out.</strong> You may opt out of arbitration by emailing <a href="mailto:privacy@mercavine.com" className="underline">privacy@mercavine.com</a> within 30 days after you first accept these Terms, including your name, account email and a clear statement that you opt out.</p>
             </Section>
 
-            <Section id="governing-law" summary="Which state's laws apply and where cases are heard.">
-              <p>These Terms are governed by the laws of <Ph id="governing_law_state" />, without regard to conflict-of-law rules. Any claims not subject to the dispute process above will be heard in <Ph id="venue" />.</p>
+            <Section id="governing-law" summary="North Carolina law applies, and court cases are heard in North Carolina.">
+              <p>These Terms are governed by the laws of the State of North Carolina and applicable US federal law, without regard to conflict-of-law rules. Any claim not subject to arbitration will be heard only in the state or federal courts located in North Carolina, and you and Mercavine consent to their personal jurisdiction.</p>
             </Section>
 
             <Section id="changes" summary="If we change these terms, we'll tell you before the changes apply.">
-              <p>We may update these Terms. For material changes we will give notice at least <Ph id="terms_change_notice" /> before they take effect, by email or on the Service. Continuing to use the Service after that means you accept the updated Terms.</p>
+              <p>We may update these Terms. For material changes we will give notice at least 30 days before they take effect, by email or on the Service. Continuing to use the Service after that means you accept the updated Terms.</p>
             </Section>
 
             <Section id="notices" summary="How we send you notices and how you send legal notices to us.">
-              <p>We may send notices to the email on your account or post them on the Service. Legal notices to Mercavine must be sent to <Ph id="legal_notice_email" /> and <Ph id="legal_notice_address" />.</p>
+              <p>We may send notices to the email on your account or post them on the Service. Legal notices to Mercavine must be sent by email to <a href="mailto:privacy@mercavine.com" className="underline">privacy@mercavine.com</a>. Mercavine accepts legal notices by email only.</p>
             </Section>
 
             <Section id="misc" summary="The standard fine print that keeps the rest working.">
@@ -248,8 +244,8 @@ export default function TermsPage() {
 
             <Section id="contact" summary="Questions? Get in touch.">
               <p>Mercavine</p>
-              <p>Support: <Ph id="support_email" /></p>
-              <p>Privacy questions: <a href="mailto:privacy@mercavine.com" className="underline">privacy@mercavine.com</a></p>
+              <p>Support: <a href="mailto:support@mercavine.com" className="underline">support@mercavine.com</a></p>
+              <p>Privacy and legal notices: <a href="mailto:privacy@mercavine.com" className="underline">privacy@mercavine.com</a></p>
             </Section>
           </div>
         </div>

@@ -20,21 +20,19 @@ describe("terms placeholders", () => {
     }
   });
 
-  it("names no people and does not assume privacy@ for legal notices", () => {
+  it("names no people and has no physical address", () => {
     expect(page).not.toMatch(/\bJoe\b|Perez|\bJP\b/);
-    expect(page).not.toMatch(/legal_notice_email[^\n]*privacy@/);
+    expect(page).toContain("accepts legal notices by email only");
   });
 
-  it("has 29 open placeholders and the confirmed facts are final text", () => {
-    expect(TERMS_PLACEHOLDERS).toHaveLength(29);
-    for (const gone of ["effective_date", "last_updated", "entity_name", "entity_type", "formation_state", "registered_address", "minimum_age", "eligible_regions", "account_deletion"]) {
-      expect(TERMS_PLACEHOLDERS.some((p) => p.id === gone)).toBe(false);
-    }
-    expect(page).toContain("Mobi Media Inc., a Florida corporation");
-    expect(page).toContain("October 16, 2026");
-    expect(page).toContain("at least 18 years old");
-    expect(page).toContain("available worldwide");
-    expect(page).toContain("kept for up to 30 days after the request, then deleted");
-    expect(TERMS_PLACEHOLDERS.some((p) => p.id === "legal_notice_address")).toBe(true);
+  it("has no open placeholders and reads as final", () => {
+    expect(TERMS_PLACEHOLDERS).toHaveLength(0);
+    expect(page).not.toMatch(/PLACEHOLDER|[Dd]raft|legal review|<Ph /);
+    for (const s of ["Mobi Media Inc., a Florida corporation", "October 16, 2026", "at least 18 years old", "available worldwide",
+      "kept for up to 30 days after the request, then deleted", "Mercavine is not the seller, buyer, or merchant of record",
+      "the seller is the merchant of record", "3% of each completed sale", "Shop Pay carry no Mercavine fee",
+      "Mercavine Copyright Agent", "American Arbitration Association", "Consumer Arbitration Rules", "seated in North Carolina",
+      "small claims court in North Carolina", "Class action waiver", "laws of the State of North Carolina",
+      "state or federal courts located in North Carolina", "mailto:support@mercavine.com"]) expect(page).toContain(s);
   });
 });
