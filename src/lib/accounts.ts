@@ -34,7 +34,16 @@ export function resetSignupRateLimits() {
   signupBuckets.clear();
 }
 
-export function createUser(input: { email: unknown; password: unknown; name?: unknown }): { id: string; email: string } {
+export const AGE_ATTESTATION_LABEL = "I am at least 18 years old";
+
+/** Throws unless the request carries an explicit `age_confirmed: true` self-attestation. */
+export function assertAgeConfirmed(value: unknown): void {
+  if (value !== true) {
+    throw new ApiError(422, "age_confirmation_required", "You must confirm you are at least 18 years old to create an account.");
+  }
+}
+
+export function createUser(input: { email: unknown; password: unknown; name?: unknown; age_confirmed?: unknown }): { id: string; email: string } {
   const email = String(input.email ?? "").trim().toLowerCase();
   const password = String(input.password ?? "");
   const name = String(input.name ?? "").trim().slice(0, 80) || email.split("@")[0];
@@ -43,14 +52,15 @@ export function createUser(input: { email: unknown; password: unknown; name?: un
     throw new ApiError(422, "weak_password", `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
   }
   if (password.length > 200) throw new ApiError(422, "weak_password", "Password is too long.");
+  assertAgeConfirmed(input.age_confirmed);
   const id = newId("usr");
   const created = transaction((db) => {
     if (one(db, `SELECT id FROM users WHERE email = ?`, email)) return false;
     // TODO(email-verification): email_verified stays 0 until a verification flow exists.
     run(
       db,
-      `INSERT INTO users (id, email, name, display_name, password_hash, created_at, email_verified) VALUES (?, ?, ?, ?, ?, ?, 0)`,
-      id, email, name, name, hashPassword(password), nowIso(),
+      `INSERT INTO users (id, email, name, display_name, password_hash, created_at, email_verified, age_attested_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+      id, email, name, name, hashPassword(password), nowIso(), nowIso(),
     );
     return true;
   });

@@ -29,6 +29,7 @@ export function SellerSignupForm({
       ["business_name", "contact_name", "contact_email", "password", "phone", "website", "category", "state", "description"].map((k) => [k, form.get(k) ?? ""]),
     );
     body.agree_terms = form.get("agree_terms") === "on";
+    if (!signedInEmail) body.age_confirmed = form.get("age_confirmed") === "on";
     const response = await fetch("/api/v1/sellers/signup", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -66,6 +67,10 @@ export function SellerSignupForm({
             <Label htmlFor="password">Password (at least 10 characters)</Label>
             <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
           </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="age_confirmed" required className="mt-1" />
+            <span>I am at least 18 years old</span>
+          </label>
         </>
       )}
       <div className="grid gap-4 sm:grid-cols-2">

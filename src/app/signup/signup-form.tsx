@@ -17,7 +17,7 @@ export function SignupForm() {
     const response = await fetch("/api/v1/users", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: formData.get("name"), email: formData.get("email"), password: formData.get("password") }),
+      body: JSON.stringify({ name: formData.get("name"), email: formData.get("email"), password: formData.get("password"), age_confirmed: formData.get("age_confirmed") === "on" }),
     });
     setPending(false);
     if (!response.ok) {
@@ -43,6 +43,10 @@ export function SignupForm() {
         <Label htmlFor="password">Password (at least 10 characters)</Label>
         <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
       </div>
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="age_confirmed" required className="mt-1" />
+        <span>I am at least 18 years old</span>
+      </label>
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       <Button type="submit" variant="vine" disabled={pending} className="w-full">
         {pending ? "Creating account…" : "Create account"}

@@ -24,7 +24,7 @@ const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(
 async function seller(email: string) {
   const res = await req("/api/v1/sellers/signup", "POST", {
     business_name: "Live Goods", contact_name: "Lee Live", contact_email: email, password: "live-mode-pass-1",
-    category: "tools", state: "NY", description: "Real tools for real people.", agree_terms: true,
+    category: "tools", state: "NY", description: "Real tools for real people.", agree_terms: true, age_confirmed: true,
   }, { "x-forwarded-for": `10.6.0.${++ip}` });
   return { cookie: cookieOf(res), id: (await res.json()).seller_id as string };
 }
