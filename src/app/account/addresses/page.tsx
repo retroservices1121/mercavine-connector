@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { listAddresses } from "@/lib/accounts";
-import { userFromSessionToken } from "@/lib/auth";
+import { buyerFromSessionToken } from "@/lib/auth";
 import { isEmailVerified } from "@/lib/email-auth";
 import { VerifyBanner } from "../verify-banner";
 import { AddressManager } from "./address-manager";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function AddressesPage({ searchParams }: { searchParams: Promise<{ onboarding?: string }> }) {
   const onboarding = (await searchParams).onboarding === "1";
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = buyerFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect("/login?next=/account/addresses");
   const addresses = listAddresses(user.id);
   // Onboarding: a buyer who already has a default address skips this step.

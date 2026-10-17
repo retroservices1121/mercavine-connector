@@ -2,7 +2,7 @@ import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sen
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
 import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
-import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
+import { login, logout, requireBot, requireBuyer, requireSellerSession, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
 import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, cardSession, syncCardPayment, settleCardCart, noteCardFailure, type LineInput } from "./cart";
 import { categoryLabels, brandSnapshot, searchNative } from "./catalog";
 import { config } from "./config";
@@ -119,7 +119,7 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     return cors(204, null, { "set-cookie": clearSessionCookie() });
   }
   if (parts[0] === "me" && method === "GET") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const bots = many<{ id: string; name: string; revoked_at: string | null; approval_threshold_cents: number; per_month_limit_cents: number }>(
       getDb(),
       `SELECT id, name, revoked_at, approval_threshold_cents, per_month_limit_cents FROM bots WHERE user_id = ?`,
@@ -158,17 +158,17 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     return cors(200, { ok: true }, { "set-cookie": clearSessionCookie() });
   }
   if (parts[0] === "bots" && parts.length === 1 && method === "GET") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, { bots: listBots(user.id) });
   }
   if (parts[0] === "bots" && parts.length === 1 && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(201, createBot(user.id, json), { "cache-control": "no-store" });
   }
   if (parts[0] === "addresses") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     if (method === "GET" && parts.length === 1) return cors(200, { addresses: listAddresses(user.id) });
     assertSameOrigin(req);
     if (method === "POST" && parts.length === 1) {
@@ -187,29 +187,29 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
   }
   if (parts[0] === "bots" && parts[2] === "revoke" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, revokeBot(parts[1], user.id));
   }
   if (parts[0] === "passkeys" && parts[1] === "register" && parts[2] === "options" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await registrationOptions(user));
   }
   if (parts[0] === "passkeys" && parts[1] === "register" && parts[2] === "verify" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, await verifyRegistration(user.id, json as never));
   }
   if (parts[0] === "passkeys" && parts[1] === "authenticate" && parts[2] === "options" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await authenticationOptions(user.id));
   }
 
   if (parts[0] === "approvals" && parts[2] === "approve" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     let assertionId: string | undefined;
     if (json.method === "passkey") {
@@ -227,17 +227,17 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     return cors(result.paid || waiting ? 200 : 402, result, { "cache-control": "no-store" });
   }
   if (parts[0] === "approvals" && parts[2] === "payment" && parts.length === 3 && method === "GET") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await cardSession({ rawToken: decodeURIComponent(parts[1]), userId: user.id }), { "cache-control": "no-store" });
   }
   if (parts[0] === "approvals" && parts[2] === "payment" && parts[3] === "sync" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await syncCardPayment({ rawToken: decodeURIComponent(parts[1]), userId: user.id }), { "cache-control": "no-store" });
   }
   if (parts[0] === "approvals" && parts[2] === "decline" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     const cart = declineCart({
       rawToken: decodeURIComponent(parts[1]),
@@ -250,102 +250,102 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
   }
   if (parts[0] === "approvals" && parts[2] === "edit" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, editPending({ rawToken: decodeURIComponent(parts[1]), userId: user.id, lines: (json.lines as { line_id: string; quantity: number }[]) ?? [] }));
   }
   if (parts[0] === "approvals" && parts[2] === "address" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, { cart: changeApprovalAddress(decodeURIComponent(parts[1]), user.id, String(json.address_id ?? "")) });
   }
   if (parts[0] === "approvals" && parts[2] === "refresh" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, askBotToRefresh(decodeURIComponent(parts[1]), user.id));
   }
 
   if (parts[0] === "shop" && parts[1] === "link" && method === "GET" && parts.length === 2) {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, shopLinkPublic(user.id));
   }
   if (parts[0] === "shop" && parts[1] === "link" && method === "POST" && parts.length === 2) {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, await startShopLink(user.id, String(json.device_name ?? "Mercavine")));
   }
   if (parts[0] === "shop" && parts[1] === "link" && parts[2] === "poll" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await pollShopLink(user.id));
   }
   if (parts[0] === "shop" && parts[1] === "pay" && parts[3] === "finish" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await finishShopPayForUser(parts[2], user.id));
   }
 
   if (parts[0] === "sellers" && parts[2] === "amazon" && parts[3] === "connect" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     assertSellerAccess(parts[1], user.id);
     return cors(200, connectAmazonSeller(parts[1]));
   }
   if (parts[0] === "sellers" && parts[2] === "amazon" && parts[3] === "prime" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     assertSellerAccess(parts[1], user.id);
     const { json } = await readJson(req);
     return cors(200, setPrimeEnrolled(parts[1], Boolean(json.enrolled)));
   }
   if (parts[0] === "sellers" && parts[2] === "amazon" && method === "GET" && parts.length === 3) {
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     assertSellerAccess(parts[1], user.id);
     return cors(200, amazonSellerPublic(parts[1]));
   }
 
   if (parts[0] === "sellers" && parts[1] === "signup" && parts.length === 2 && method === "POST") {
     assertSameOrigin(req);
-    const signedIn = sessionUserFromRequest(req);
+    // Seller logins are separate identities: always a new email + password, never the signed-in shopper account.
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
     sellerSignupRateLimit(`seller:${ip}`);
     const { json } = await readJson(req);
-    const result = createSellerAccount(json, signedIn?.id);
+    const result = createSellerAccount(json);
     if (!result.created) return cors(201, { seller_id: result.seller.id, status: result.seller.status });
     const session = login(result.email, String(json.password ?? ""));
     await sendVerification(result.userId);
     return cors(201, { seller_id: result.seller.id, status: result.seller.status, email_verified: false }, { "set-cookie": sessionCookie(session.token) });
   }
   if (parts[0] === "seller" && parts[1] === "dashboard" && method === "GET") {
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     return cors(200, sellerDashboard(user.id));
   }
   if (parts[0] === "seller" && parts[1] === "stripe" && parts[2] === "onboard" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     return cors(200, await startStripeOnboarding(user.id), { "cache-control": "no-store" });
   }
   if (parts[0] === "seller" && parts[1] === "stripe" && parts[2] === "refresh" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     await refreshStripeStatus(user.id);
     return cors(200, sellerDashboard(user.id));
   }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 2 && method === "GET") {
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     return cors(200, { products: listSellerProducts(user.id) });
   }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 2 && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     const { json } = await readJson(req);
     return cors(201, createSellerProduct(user.id, json));
   }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 3 && (method === "PATCH" || method === "PUT")) {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     const { json } = await readJson(req);
     return cors(200, updateSellerProduct(user.id, parts[2], json));
   }

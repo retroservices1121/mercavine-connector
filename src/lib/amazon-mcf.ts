@@ -65,10 +65,16 @@ function toPublic(db: DatabaseSync, sellerId: string): AmazonSellerPublic {
   return body;
 }
 
-export function listSellerConnections(): Array<AmazonSellerPublic & { enabled: boolean; live_fallback: boolean }> {
+/**
+ * Amazon connection status per seller. Pass `{ userId }` to scope to sellers owned by that user (the /sellers page);
+ * `{ all: true }` lists every seller and is for admin use only.
+ */
+export function listSellerConnections(scope: { userId: string } | { all: true }): Array<AmazonSellerPublic & { enabled: boolean; live_fallback: boolean }> {
   return transaction((db) => {
     const cfg = config();
-    const rows = many<{ id: string }>(db, `SELECT id FROM sellers ORDER BY name`);
+    const rows = "all" in scope
+      ? many<{ id: string }>(db, `SELECT id FROM sellers ORDER BY name`)
+      : many<{ id: string }>(db, `SELECT id FROM sellers WHERE user_id = ? ORDER BY name`, scope.userId);
     return rows.map((row) => ({
       ...toPublic(db, row.id),
       enabled: cfg.amazonMcfEnabled,
