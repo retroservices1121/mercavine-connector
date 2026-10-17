@@ -75,15 +75,17 @@ export async function requireBot(req: Request, rawBody: string, scope: string): 
   return bot;
 }
 
-export type SessionUser = { id: string; email: string; name: string; display_name: string };
+/** "buyer" = shopper account; "seller" = separate seller login. The two never share a session or data. */
+export type AccountType = "buyer" | "seller";
+export type SessionUser = { id: string; email: string; name: string; display_name: string; account_type: AccountType };
 
 export function userById(id: string, db: DatabaseSync = getDb()): SessionUser | undefined {
-  return one<SessionUser>(db, `SELECT id, email, name, display_name FROM users WHERE id = ?`, id);
+  return one<SessionUser>(db, `SELECT id, email, name, display_name, account_type FROM users WHERE id = ?`, id);
 }
 
 export function login(email: string, password: string): { token: string; user: SessionUser } {
   const db = getDb();
-  const row = one<SessionUser & { password_hash: string }>(db, `SELECT id, email, name, display_name, password_hash FROM users WHERE email = ?`, email.trim().toLowerCase());
+  const row = one<SessionUser & { password_hash: string }>(db, `SELECT id, email, name, display_name, account_type, password_hash FROM users WHERE email = ?`, email.trim().toLowerCase());
   if (!row || !verifyPassword(password, row.password_hash)) {
     throw new ApiError(401, "invalid_login", "Email or password is wrong.");
   }
@@ -97,19 +99,19 @@ export function login(email: string, password: string): { token: string; user: S
     addHours(new Date(), 24 * 14),
     nowIso(),
   );
-  return { token, user: { id: row.id, email: row.email, name: row.name, display_name: row.display_name } };
+  return { token, user: { id: row.id, email: row.email, name: row.name, display_name: row.display_name, account_type: row.account_type } };
 }
 
 export function userFromSessionToken(token: string | undefined | null): SessionUser | undefined {
   if (!token) return undefined;
   const row = one<SessionUser & { expires_at: string }>(
     getDb(),
-    `SELECT u.id, u.email, u.name, u.display_name, s.expires_at
+    `SELECT u.id, u.email, u.name, u.display_name, u.account_type, s.expires_at
      FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
     sha256(token),
   );
   if (!row || row.expires_at < nowIso()) return undefined;
-  return { id: row.id, email: row.email, name: row.name, display_name: row.display_name };
+  return { id: row.id, email: row.email, name: row.name, display_name: row.display_name, account_type: row.account_type };
 }
 
 export function logout(token: string) {
@@ -138,6 +140,30 @@ export function requireUser(req: Request): SessionUser {
   const user = userFromSessionToken(readCookie(req, "mv_session"));
   if (!user) throw new ApiError(401, "login_required", "Sign in to continue.");
   return user;
+}
+
+/** Shopper-only routes. A seller session gets the same answer as no session, so nothing about the buyer side leaks. */
+export function requireBuyer(req: Request): SessionUser {
+  const user = requireUser(req);
+  if (user.account_type !== "buyer") throw new ApiError(401, "login_required", "Sign in with your shopping account to continue.");
+  return user;
+}
+
+/** Seller-only routes. A shopper session never sees seller data, even if the same person also has a seller login. */
+export function requireSellerSession(req: Request): SessionUser {
+  const user = requireUser(req);
+  if (user.account_type !== "seller") throw new ApiError(401, "seller_login_required", "Sign in with your seller account to continue.");
+  return user;
+}
+
+/** Page helpers: the session user only if it is the right kind of account. */
+export function buyerFromSessionToken(token: string | undefined | null): SessionUser | undefined {
+  const user = userFromSessionToken(token);
+  return user?.account_type === "buyer" ? user : undefined;
+}
+export function sellerUserFromSessionToken(token: string | undefined | null): SessionUser | undefined {
+  const user = userFromSessionToken(token);
+  return user?.account_type === "seller" ? user : undefined;
 }
 
 export function assertSameOrigin(req: Request) {

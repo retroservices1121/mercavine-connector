@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { listSellerConnections } from "@/lib/amazon-mcf";
-import { userFromSessionToken } from "@/lib/auth";
+import { sellerUserFromSessionToken } from "@/lib/auth";
+import { ADMIN_COOKIE, adminTokenMatches } from "@/lib/admin-auth";
 import { config } from "@/lib/config";
 import { SellerConnect } from "./seller-connect";
 
@@ -10,10 +11,13 @@ export const dynamic = "force-dynamic";
 
 export default async function SellersPage() {
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = sellerUserFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect("/login?next=/sellers");
   const cfg = config();
-  const sellers = listSellerConnections();
+  const isAdmin = adminTokenMatches(jar.get(ADMIN_COOKIE)?.value);
+  // Only the signed-in user's own seller(s); the full list is admin-only (mv_admin cookie from /admin/store).
+  const sellers = listSellerConnections(isAdmin ? { all: true } : { userId: user.id });
+  if (!sellers.length && !isAdmin) redirect("/sell");
   const fallback = cfg.amazonMcfLiveRequested && cfg.amazonMcfMode !== "live";
   return (
     <main>

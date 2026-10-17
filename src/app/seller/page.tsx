@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { SellerConnect } from "@/app/sellers/seller-connect";
-import { userFromSessionToken } from "@/lib/auth";
+import { sellerUserFromSessionToken } from "@/lib/auth";
 import { categoryLabels } from "@/lib/catalog";
 import { config } from "@/lib/config";
 import { SELLER_FEE_COPY, sellerDashboard, sellerForUser, type StripeCardState } from "@/lib/sellers";
@@ -33,7 +33,7 @@ function Card({ title, status, good, children }: { title: string; status: string
 
 export default async function SellerPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = sellerUserFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect("/login?next=/seller");
   if (!sellerForUser(user.id)) redirect("/sell");
   const params = await searchParams;

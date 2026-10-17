@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { userFromSessionToken } from "@/lib/auth";
+import { sellerUserFromSessionToken } from "@/lib/auth";
 import { categoryLabels } from "@/lib/catalog";
 import { SELLER_FEE_COPY, sellerForUser, US_STATES } from "@/lib/sellers";
 import { SellerSignupForm } from "./seller-signup-form";
@@ -19,7 +19,7 @@ const perks = [
 
 export default async function SellPage() {
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = sellerUserFromSessionToken(jar.get("mv_session")?.value);
   const existing = user ? sellerForUser(user.id) : undefined;
   return (
     <>
@@ -55,10 +55,10 @@ export default async function SellPage() {
             <>
               <h2 id="signup-title" className="text-3xl">Create your seller account</h2>
               <p className="mt-1 mb-5 text-sm text-[var(--muted)]">
-                Takes about two minutes. {user ? null : <>Already have an account? <Link href="/login?next=/sell" className="underline">Sign in</Link> first.</>}
+                Takes about two minutes. Seller accounts are separate from shopping accounts and need their own email. Already a seller? <Link href="/login?next=/seller" className="underline">Sign in</Link>.
               </p>
               <SellerSignupForm
-                signedInEmail={user?.email ?? null}
+                signedInEmail={null}
                 categories={categoryLabels().map(({ slug, label }) => ({ slug, label }))}
                 states={US_STATES}
               />
