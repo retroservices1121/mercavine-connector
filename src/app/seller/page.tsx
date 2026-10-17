@@ -6,7 +6,8 @@ import { SellerConnect } from "@/app/sellers/seller-connect";
 import { sellerUserFromSessionToken } from "@/lib/auth";
 import { categoryLabels } from "@/lib/catalog";
 import { config } from "@/lib/config";
-import { SELLER_FEE_COPY, sellerDashboard, sellerForUser, type StripeCardState } from "@/lib/sellers";
+import { formatUsd } from "@/lib/money";
+import { SELLER_FEE_COPY, SELLER_FEE_HELP, listSellerOrders, sellerDashboard, sellerForUser, type StripeCardState } from "@/lib/sellers";
 import { ProductForm, ProductRow, StripeButton, StripeRefresher } from "./seller-actions";
 
 export const dynamic = "force-dynamic";
@@ -39,18 +40,26 @@ export default async function SellerPage({ searchParams }: { searchParams: Promi
   const params = await searchParams;
   const cfg = config();
   const d = sellerDashboard(user.id);
+  const orders = listSellerOrders(user.id);
   const categories = categoryLabels().map(({ slug, label }) => ({ slug, label }));
   const [stripeStatus, stripeText] = stripeCopy[d.stripe.state];
   const shouldRefresh = d.stripe.connected && (d.stripe.state !== "active" || Boolean(params.stripe));
   return (
     <>
-      <SiteHeader signedIn />
+      <SiteHeader signedIn seller />
       <StripeRefresher enabled={shouldRefresh} />
       <main className="mx-auto max-w-5xl space-y-8 px-5 py-10 md:px-10">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--copper)]">Seller dashboard</p>
           <h1 className="mt-2 text-4xl">{d.seller.name}</h1>
-          <p className="mt-2 text-sm text-[var(--muted)]">{SELLER_FEE_COPY}</p>
+          {params.welcome ? (
+            <div role="status" className="mt-4 rounded-2xl border border-[var(--line)] bg-[#e3efe0] px-4 py-3 text-sm text-[var(--ink)]">
+              <p className="font-medium">Welcome to Mercavine! Your seller account is ready.</p>
+              <p className="mt-1">Next, set up payouts with Stripe, then add your first product. {SELLER_FEE_COPY}</p>
+            </div>
+          ) : null}
+          {params.amazon === "connected" ? <p role="status" className="mt-3 rounded-2xl bg-[#e3efe0] px-4 py-3 text-sm text-[var(--ink)]">Your Amazon seller account is connected.</p> : null}
+          {params.amazon === "error" ? <p role="alert" className="mt-3 rounded-2xl bg-[#f6e3dc] px-4 py-3 text-sm text-[var(--danger)]">We couldn&apos;t connect your Amazon seller account. Please try again from the Amazon shipping card below.</p> : null}
           {params.stripe === "refresh" ? <p role="status" className="mt-3 text-sm">Your Stripe link expired. Click the button below to pick up where you left off.</p> : null}
         </div>
 
@@ -103,6 +112,34 @@ export default async function SellerPage({ searchParams }: { searchParams: Promi
           <h3 className="mt-6 font-medium">{d.products.length ? "Add another product" : "Add your first product"}</h3>
           <div className="mt-3"><ProductForm categories={categories} /></div>
         </section>
+
+        <section aria-labelledby="orders-title" className="rounded-3xl border border-[var(--line)] bg-[var(--card)] p-6">
+          <h2 id="orders-title" className="display text-2xl">4. Your orders</h2>
+          {orders.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-[var(--muted)]">
+                  <tr><th className="py-2 pr-3 font-normal">Date</th><th className="py-2 pr-3 font-normal">Items</th><th className="py-2 pr-3 font-normal">Qty</th><th className="py-2 pr-3 font-normal">Total</th><th className="py-2 pr-3 font-normal">Status</th><th className="py-2 font-normal">Ships to</th></tr>
+                </thead>
+                <tbody>
+                  {orders.map((o) => (
+                    <tr key={o.order_id} className="border-t border-[var(--line)] align-top">
+                      <td className="py-2 pr-3">{new Date(o.created_at).toLocaleDateString("en-US", { timeZone: "America/New_York" })}</td>
+                      <td className="py-2 pr-3">{o.items.map((i) => i.title).join(", ")}</td>
+                      <td className="py-2 pr-3">{o.items.reduce((n, i) => n + i.quantity, 0)}</td>
+                      <td className="py-2 pr-3">{formatUsd(o.total_cents)}</td>
+                      <td className="py-2 pr-3 capitalize">{o.status.replace(/_/g, " ")}</td>
+                      <td className="py-2">{o.ship_to ? `${o.ship_to.city}, ${o.ship_to.region}` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--muted)]">No orders yet. When a shopper buys one of your products, it shows up here.</p>
+          )}
+        </section>
+        <p className="text-xs text-[var(--muted)]">{SELLER_FEE_HELP}</p>
       </main>
       <SiteFooter />
     </>
