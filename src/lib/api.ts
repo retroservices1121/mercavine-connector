@@ -550,12 +550,25 @@ export function sessionUserFromRequest(req: Request) {
  * Cron hits sync/refresh/tracking; a human approves or rejects held orders.
  */
 async function adminRoute(req: Request, method: string, parts: string[]): Promise<Response> {
-  const expected = process.env.MERCAVINE_ADMIN_TOKEN?.trim();
-  if (!expected || expected.length < 24) throw new ApiError(404, "not_found", "Not found.");
-  const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const { timingSafeEqual, createHash } = await import("node:crypto");
-  const h = (v: string) => createHash("sha256").update(v).digest();
-  if (!timingSafeEqual(h(got), h(expected))) throw new ApiError(401, "unauthorized", "Admin token required.");
+  const { adminTokenConfigured, adminTokenMatches, adminCookie, readCookieValue, ADMIN_COOKIE } = await import("./admin-auth");
+  if (!adminTokenConfigured()) throw new ApiError(404, "not_found", "Not found.");
+  // Admin screen sign-in: token in the POST body only, answered with an httpOnly SameSite=Strict cookie.
+  if (parts[0] === "session" && parts.length === 1) {
+    assertSameOrigin(req);
+    if (method === "DELETE") return cors(200, { ok: true }, { "set-cookie": adminCookie("", 0) });
+    if (method === "POST") {
+      const { json } = await readJson(req);
+      if (!adminTokenMatches(typeof json.token === "string" ? json.token.trim() : "")) throw new ApiError(401, "unauthorized", "That admin token isn't right.");
+      return cors(200, { ok: true }, { "set-cookie": adminCookie(String(json.token).trim(), 8 * 3600) });
+    }
+  }
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const viaCookie = !bearer && adminTokenMatches(readCookieValue(req.headers.get("cookie"), ADMIN_COOKIE));
+  if (!adminTokenMatches(bearer) && !viaCookie) throw new ApiError(401, "unauthorized", "Admin token required.");
+  if (viaCookie) {
+    assertSameOrigin(req);
+    if (method !== "GET" && !req.headers.get("origin")) throw new ApiError(403, "bad_origin", "Origin required.");
+  }
   const store = await import("./cj-store");
   const { json } = method === "POST" ? await readJson(req) : { json: {} as Record<string, unknown> };
   const admin = String(json.admin ?? "admin").slice(0, 64);
@@ -566,6 +579,17 @@ async function adminRoute(req: Request, method: string, parts: string[]): Promis
     const { pointsUsedToday, cjConfigured } = await import("./cj");
     const cfg = store.storeConfig();
     return cors(200, { configured: cjConfigured(), points_today: pointsUsedToday(), orders_live: cfg.ordersLive, margin_bps: cfg.marginBps, min_price_cents: cfg.minPriceCents });
+  }
+  if (parts[0] === "jobs" && method === "GET") {
+    const { jobStatus, jobsConfig } = await import("./store-jobs");
+    return cors(200, { config: jobsConfig(), last: jobStatus() });
+  }
+  if (parts[0] === "jobs" && method === "POST" && parts[1]) {
+    const { jobs, runJob } = await import("./store-jobs");
+    const name = parts[1] as keyof typeof jobs;
+    if (!(name in jobs)) throw new ApiError(404, "not_found", "Unknown job.");
+    const out = await runJob(name, jobs[name]);
+    return cors(out === null ? 409 : 200, out === null ? { error: { code: "busy_or_failed", message: "Job is already running or failed; see GET /admin/jobs." } } : out);
   }
   if (parts[0] === "supplier-orders" && method === "GET" && parts.length === 1) return cors(200, { data: store.listSupplierOrders() });
   if (parts[0] === "supplier-orders" && method === "POST" && parts[2] === "approve") return cors(200, await store.approveSupplierOrder(parts[1], admin));
