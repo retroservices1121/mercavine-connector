@@ -25,7 +25,7 @@ export function SignupForm() {
       setError(body?.error?.message ?? "Could not create an account.");
       return;
     }
-    router.push("/account/addresses");
+    router.push("/account/addresses?onboarding=1");
     router.refresh();
   }
 

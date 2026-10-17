@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { userFromSessionToken } from "@/lib/auth";
+import { buyerFromSessionToken } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { checkAuthorizeRequest, createConsentRequest } from "@/lib/oauth";
 
@@ -33,7 +33,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
     );
   }
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = buyerFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect(`/login?next=${encodeURIComponent(`/oauth/authorize?${params.toString()}`)}`);
   const requestId = createConsentRequest(user.id, check);
   return (

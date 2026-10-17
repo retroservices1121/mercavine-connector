@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { userFromSessionToken } from "@/lib/auth";
+import { sellerUserFromSessionToken } from "@/lib/auth";
 import { categoryLabels } from "@/lib/catalog";
 import { SELLER_FEE_COPY, sellerForUser, US_STATES } from "@/lib/sellers";
 import { SellerSignupForm } from "./seller-signup-form";
@@ -19,11 +19,11 @@ const perks = [
 
 export default async function SellPage() {
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = sellerUserFromSessionToken(jar.get("mv_session")?.value);
   const existing = user ? sellerForUser(user.id) : undefined;
   return (
     <>
-      <SiteHeader signedIn={Boolean(user)} />
+      <SiteHeader signedIn={Boolean(user)} seller={Boolean(user)} />
       <main className="mx-auto grid max-w-6xl gap-10 px-5 py-12 md:grid-cols-[1fr_1fr] md:px-10">
         <section>
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--copper)]">Sell on Mercavine</p>
@@ -55,10 +55,14 @@ export default async function SellPage() {
             <>
               <h2 id="signup-title" className="text-3xl">Create your seller account</h2>
               <p className="mt-1 mb-5 text-sm text-[var(--muted)]">
-                Takes about two minutes. {user ? null : <>Already have an account? <Link href="/login?next=/sell" className="underline">Sign in</Link> first.</>}
+                Takes about two minutes. Seller accounts are separate from shopping accounts and need their own email.
               </p>
+              <div className="mb-5 flex flex-wrap items-center gap-3 text-sm">
+                <span className="text-[var(--muted)]">Already a seller?</span>
+                <Link href="/login?next=/seller" className="inline-flex h-9 items-center rounded-full border border-[var(--line)] px-4 text-[var(--ink)] hover:bg-[var(--paper)]">Sign in to your seller account</Link>
+              </div>
               <SellerSignupForm
-                signedInEmail={user?.email ?? null}
+                signedInEmail={null}
                 categories={categoryLabels().map(({ slug, label }) => ({ slug, label }))}
                 states={US_STATES}
               />

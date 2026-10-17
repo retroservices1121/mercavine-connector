@@ -526,6 +526,11 @@ function migrate(db: DatabaseSync): void {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sellers_user ON sellers(user_id)`);
   // First-party Mercavine Store + CJdropshipping supplier tables.
   addColumn(db, "sellers", "first_party", "INTEGER NOT NULL DEFAULT 0");
+  // Buyer/seller separation: seller logins are their own user rows and never share a session with a shopper account.
+  // No data backfill: existing rows read as 'buyer'. Sellers created before this change stay tied to a buyer
+  // login and can't reach seller pages until they are migrated (see docs/seller-separation.md).
+  addColumn(db, "products", "unlisted", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "users", "account_type", "TEXT NOT NULL DEFAULT 'buyer'");
   db.exec(`CREATE TABLE IF NOT EXISTS supplier_products (
     pid TEXT PRIMARY KEY, vid TEXT NOT NULL, supplier TEXT NOT NULL, name TEXT NOT NULL, category_id TEXT,
     cost_cents INTEGER NOT NULL, freight_cents INTEGER NOT NULL, logistic_name TEXT, us_stock INTEGER NOT NULL,

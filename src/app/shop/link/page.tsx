@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
-import { userFromSessionToken } from "@/lib/auth";
+import { buyerFromSessionToken } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { shopLinkPublic } from "@/lib/shop-pay";
 import { ConfirmShopLink } from "./confirm";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ShopLinkPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = buyerFromSessionToken(jar.get("mv_session")?.value);
   const params = await searchParams;
   if (!user) redirect(`/login?next=${encodeURIComponent(`/shop/link?code=${params.code ?? ""}`)}`);
   const cfg = config();

@@ -3,7 +3,11 @@ export async function register() {
     const { getDb } = await import("./lib/db");
     const { sweepExpired } = await import("./lib/cart");
     const { retryDueWebhooks } = await import("./lib/webhooks");
+    const { scheduleBackups } = await import("./lib/backup");
     getDb();
+    scheduleBackups();
+    const { scheduleStoreJobs } = await import("./lib/store-jobs");
+    scheduleStoreJobs();
     setInterval(() => {
       try {
         sweepExpired();

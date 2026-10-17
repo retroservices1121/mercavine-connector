@@ -2,7 +2,7 @@
 
 This folder is a filled-out draft for the xAI Grok Bot marketplace form (and the Cursor listing that shares the plugin). **It has not been submitted.**
 
-Contact: Joe Perez, CEO, mercavine-outreach@mail.grokbot.com. Website: https://mercavine.com. Privacy: https://mercavine.com/privacy. Terms: https://mercavine.com/terms.
+Contact: Joe Perez, CEO, support@mercavine.com. Website: https://mercavine.com. Privacy: https://mercavine.com/privacy. Terms: https://mercavine.com/terms.
 
 The logotype file is `logo.svg` (also served at `/logo.svg`). It is a 1:1 SVG on a green background plate.
 
