@@ -59,7 +59,7 @@ export function backupConfig(env: Record<string, string | undefined> = process.e
 
 export function encryptBackup(plain: Buffer, key: Buffer): Buffer {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
   const ct = Buffer.concat([cipher.update(gzipSync(plain)), cipher.final()]);
   return Buffer.concat([MAGIC, iv, cipher.getAuthTag(), ct]);
 }
@@ -68,7 +68,7 @@ export function decryptBackup(blob: Buffer, key: Buffer): Buffer {
   if (!blob.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error("Not a Mercavine backup file.");
   const iv = blob.subarray(5, 17);
   const tag = blob.subarray(17, 33);
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   return gunzipSync(Buffer.concat([decipher.update(blob.subarray(33)), decipher.final()]));
 }
