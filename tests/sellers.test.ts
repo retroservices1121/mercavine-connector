@@ -72,18 +72,13 @@ describe("seller onboarding", () => {
     expect((getDb().prepare(`SELECT email_verified FROM users WHERE email = ?`).get("pat@oakpine.example") as { email_verified: number }).email_verified).toBe(0);
   });
 
-  it("reuses a signed-in shopper account and allows only one seller per account", async () => {
+  it("never reuses a signed-in shopper account; seller sign-up always makes a separate seller login", async () => {
     const shopper = await req("/api/v1/users", "POST", { email: "shop@example.com", password: PW }, { "x-forwarded-for": "10.8.0.1" });
     const cookie = cookieOf(shopper);
-    const before = (getDb().prepare(`SELECT COUNT(*) AS n FROM users`).get() as { n: number }).n;
-    const first = await req("/api/v1/sellers/signup", "POST", sellerBody("ignored@example.com", { password: undefined }), { cookie, "x-forwarded-for": "10.8.0.2" });
+    const first = await req("/api/v1/sellers/signup", "POST", sellerBody("sellerside@example.com"), { cookie, "x-forwarded-for": "10.8.0.2" });
     expect(first.status).toBe(201);
-    const users = getDb().prepare(`SELECT COUNT(*) AS n FROM users`).get() as { n: number };
-    expect(users.n).toBe(before);
-    const linked = getDb().prepare(`SELECT u.email FROM sellers s JOIN users u ON u.id = s.user_id`).get() as { email: string };
-    expect(linked.email).toBe("shop@example.com");
-    const again = await req("/api/v1/sellers/signup", "POST", sellerBody("x@example.com"), { cookie, "x-forwarded-for": "10.8.0.3" });
-    expect(again.status).toBe(422);
+    const linked = getDb().prepare(`SELECT u.email, u.account_type FROM sellers s JOIN users u ON u.id = s.user_id`).get() as { email: string; account_type: string };
+    expect(linked).toEqual({ email: "sellerside@example.com", account_type: "seller" });
   });
 
   it("rejects bad input with friendly messages, duplicate emails generically, and rate limits", async () => {
@@ -92,7 +87,7 @@ describe("seller onboarding", () => {
     expect((await bad.json()).error.message).toMatch(/seller terms/);
     await signupSeller("dupe@example.com");
     const dupe = await req("/api/v1/sellers/signup", "POST", sellerBody("dupe@example.com"), { "x-forwarded-for": "10.7.0.2" });
-    expect((await dupe.json()).error.code).toBe("signup_failed");
+    expect((await dupe.json()).error.code).toBe("email_unavailable");
     let last = 0;
     for (let i = 0; i < 7; i++) last = (await req("/api/v1/sellers/signup", "POST", sellerBody(`r${i}@example.com`), { "x-forwarded-for": "10.7.9.9" })).status;
     expect(last).toBe(429);
@@ -170,5 +165,23 @@ describe("seller onboarding", () => {
     expect(other.status).toBe(404);
     const dash = await (await req("/api/v1/seller/dashboard", "GET", undefined, { cookie: a.cookie })).json();
     expect(dash.amazon.connected).toBe(true);
+  });
+});
+
+describe("/sellers page scoping", () => {
+  useTempDb();
+  beforeEach(() => { resetSignupRateLimits(); setStripeOnboardingClient(null); clearMailOutbox(); });
+
+  it("lists only the signed-in user's own sellers; others' sellers are not visible", async () => {
+    const { listSellerConnections } = await import("../src/lib/amazon-mcf");
+    const a = await signupSeller("owner-a@example.com");
+    const b = await signupSeller("owner-b@example.com");
+    const userA = (getDb().prepare(`SELECT user_id FROM sellers WHERE id = ?`).get(a.json.seller_id) as { user_id: string }).user_id;
+    const mine = listSellerConnections({ userId: userA }).map((s) => s.seller_id);
+    expect(mine).toEqual([a.json.seller_id]);
+    expect(mine).not.toContain(b.json.seller_id);
+    expect(listSellerConnections({ userId: "usr_nobody" })).toEqual([]);
+    const all = listSellerConnections({ all: true }).map((s) => s.seller_id);
+    expect(all).toEqual(expect.arrayContaining([a.json.seller_id, b.json.seller_id]));
   });
 });

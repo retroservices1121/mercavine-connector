@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
-import { userFromSessionToken } from "@/lib/auth";
+import { buyerFromSessionToken } from "@/lib/auth";
 import { isEmailVerified } from "@/lib/email-auth";
 import { VerifyBanner } from "./verify-banner";
 import { humanOrders, notificationsFor } from "@/lib/cart";
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = buyerFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect("/login");
   const cfg = config();
   const bots = getDb().prepare(`SELECT id, name, revoked_at, approval_threshold_cents, per_month_limit_cents FROM bots WHERE user_id = ?`).all(user.id) as {

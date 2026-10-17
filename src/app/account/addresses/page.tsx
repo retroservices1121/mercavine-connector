@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { listAddresses } from "@/lib/accounts";
-import { userFromSessionToken } from "@/lib/auth";
+import { buyerFromSessionToken } from "@/lib/auth";
 import { isEmailVerified } from "@/lib/email-auth";
 import { VerifyBanner } from "../verify-banner";
 import { AddressManager } from "./address-manager";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AddressesPage() {
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = buyerFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect("/login?next=/account/addresses");
   return (
     <main>

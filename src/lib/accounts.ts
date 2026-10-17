@@ -34,8 +34,13 @@ export function resetSignupRateLimits() {
   signupBuckets.clear();
 }
 
-export function createUser(input: { email: unknown; password: unknown; name?: unknown }): { id: string; email: string } {
-  const email = String(input.email ?? "").trim().toLowerCase();
+/** Trim, Unicode-normalize (NFKC) and lowercase, so case variants of one address collide. */
+export function normalizeEmail(value: unknown): string {
+  return String(value ?? "").normalize("NFKC").trim().toLowerCase();
+}
+
+export function createUser(input: { email: unknown; password: unknown; name?: unknown; accountType?: "buyer" | "seller" }): { id: string; email: string } {
+  const email = normalizeEmail(input.email);
   const password = String(input.password ?? "");
   const name = String(input.name ?? "").trim().slice(0, 80) || email.split("@")[0];
   if (!EMAIL_RE.test(email) || email.length > 254) throw new ApiError(422, "invalid_email", "Enter a valid email address.");
@@ -45,17 +50,19 @@ export function createUser(input: { email: unknown; password: unknown; name?: un
   if (password.length > 200) throw new ApiError(422, "weak_password", "Password is too long.");
   const id = newId("usr");
   const created = transaction((db) => {
-    if (one(db, `SELECT id FROM users WHERE email = ?`, email)) return false;
+    // Shopper and seller logins share one email namespace: an email used by either kind can't be reused by the other.
+    if (one(db, `SELECT id FROM users WHERE lower(trim(email)) = ?`, email)) return false;
     // TODO(email-verification): email_verified stays 0 until a verification flow exists.
     run(
       db,
-      `INSERT INTO users (id, email, name, display_name, password_hash, created_at, email_verified) VALUES (?, ?, ?, ?, ?, ?, 0)`,
-      id, email, name, name, hashPassword(password), nowIso(),
+      `INSERT INTO users (id, email, name, display_name, password_hash, created_at, email_verified, account_type) VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+      id, email, name, name, hashPassword(password), nowIso(), input.accountType ?? "buyer",
     );
     return true;
   });
-  // Generic message so sign-up cannot be used to probe which emails exist.
-  if (!created) throw new ApiError(422, "signup_failed", "Could not create an account with those details.");
+  // Same message whether the email belongs to a shopper or a seller account, so it never reveals which kind exists.
+  // (Saying "use a different email" unavoidably hints the email is taken; sign-up is rate limited.)
+  if (!created) throw new ApiError(422, "email_unavailable", "That email can't be used for a new account. Please use a different email address.");
   return { id, email };
 }
 

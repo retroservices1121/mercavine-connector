@@ -46,7 +46,7 @@ describe("accounts", () => {
 
     const dup = await signup("new.shopper@example.com");
     expect(dup.res.status).toBe(422);
-    expect(((await dup.res.json()) as { error: { code: string } }).error.code).toBe("signup_failed");
+    expect(((await dup.res.json()) as { error: { code: string } }).error.code).toBe("email_unavailable");
 
     expect((await post("/api/v1/users", { email: "not-an-email", password: PW })).status).toBe(422);
     expect((await post("/api/v1/users", { email: "short@example.com", password: "123456789" })).status).toBe(422);
