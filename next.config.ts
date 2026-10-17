@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
+import { securityHeaders } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   serverExternalPackages: ["@simplewebauthn/server", "stripe"],
   async rewrites() {
     return [
@@ -10,6 +12,7 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      { source: "/:path*", headers: securityHeaders() },
       {
         source: "/a/:path*",
         headers: [
