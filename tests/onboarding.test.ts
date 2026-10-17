@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressStepNext, showSellerAccountItems } from "@/lib/onboarding";
+import { addressStepNext } from "@/lib/onboarding";
 
 describe("buyer onboarding address step", () => {
   it("advances to the account page once a default address exists during onboarding", () => {
@@ -13,12 +13,6 @@ describe("buyer onboarding address step", () => {
   });
 });
 
-describe("seller-only account items", () => {
-  it("hides for buyers and shows for sellers", () => {
-    expect(showSellerAccountItems(false)).toBe(false);
-    expect(showSellerAccountItems(true)).toBe(true);
-  });
-});
 
 import { createPublicKey } from "node:crypto";
 import { buildBotPayload, ed25519Supported, generateBotKeyPair, looksLikePublicKeyPem } from "@/lib/bot-keys";

@@ -5,7 +5,3 @@ export function addressStepNext(opts: { onboarding: boolean; hasDefault: boolean
   return opts.onboarding && opts.hasDefault ? ONBOARDING_DONE_PATH : null;
 }
 
-/** Seller-only account copy and links (fee terms, Amazon seller accounts) are hidden from buyers. */
-export function showSellerAccountItems(isSeller: boolean): boolean {
-  return isSeller;
-}
