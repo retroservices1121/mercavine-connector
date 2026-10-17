@@ -55,7 +55,7 @@ export function sealToken(value: string | null | undefined): string | null {
   if (isSealed(value)) return value;
   const key = requireKey();
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
   const ct = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${PREFIX}${iv.toString("base64url")}:${tag.toString("base64url")}:${ct.toString("base64url")}`;
@@ -68,7 +68,7 @@ export function openToken(value: string | null | undefined): string | null {
   const key = requireKey();
   const [iv, tag, ct] = value.slice(PREFIX.length).split(":");
   if (!iv || !tag || ct === undefined) throw new ApiError(500, "token_corrupt", "A stored credential is unreadable.");
-  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"));
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"), { authTagLength: 16 });
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(ct, "base64url")), decipher.final()]).toString("utf8");
 }
