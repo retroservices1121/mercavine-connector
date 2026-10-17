@@ -1,7 +1,7 @@
 {
   "first_name": "Joe",
   "last_name": "Perez",
-  "work_email": "mercavine-outreach@mail.grokbot.com",
+  "work_email": "support@mercavine.com",
   "organization_name": "Mercavine",
   "organization_handle": "mercavine",
   "website_url": "https://mercavine.com",
@@ -28,7 +28,7 @@
   "contact": {
     "name": "Joe Perez",
     "role": "CEO",
-    "email": "mercavine-outreach@mail.grokbot.com"
+    "email": "support@mercavine.com"
   },
   "submitted": false,
   "privacy_policy_url": "https://mercavine.com/privacy",

@@ -189,6 +189,8 @@ export function revokeBot(botId: string, actorUserId: string) {
     const bot = one<{ id: string; user_id: string }>(db, `SELECT id, user_id FROM bots WHERE id = ?`, botId);
     if (!bot || bot.user_id !== actorUserId) throw new ApiError(404, "not_found", "Bot not found.");
     run(db, `UPDATE bots SET revoked_at = ? WHERE id = ?`, nowIso(), botId);
+    // Kill every OAuth access and refresh token issued to this bot connection.
+    run(db, `UPDATE oauth_tokens SET revoked_at = ? WHERE bot_id = ? AND revoked_at IS NULL`, nowIso(), botId);
     const open = db.prepare(`SELECT id FROM carts WHERE bot_client_id = ? AND status IN ('draft', 'pending_approval')`).all(botId) as unknown as { id: string }[];
     for (const cart of open) {
       run(db, `UPDATE carts SET status = 'cancelled', status_reason = 'bot_revoked', updated_at = ? WHERE id = ?`, nowIso(), cart.id);

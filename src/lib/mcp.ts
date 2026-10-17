@@ -3,7 +3,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { botByToken, type BotRecord } from "./auth";
+import { botById, botByToken, type BotRecord } from "./auth";
+import { botForMcpToken, mcpChallenge } from "./oauth";
 import { cancelCart, createCart, getCartForBot, submitCart, updateCart, type LineInput } from "./cart";
 import { config } from "./config";
 import { ApiError, errorBody } from "./errors";
@@ -18,9 +19,11 @@ function header(extra: RequestHandlerExtra<ServerRequest, ServerNotification>, n
 }
 
 function botFromExtra(extra: RequestHandlerExtra<ServerRequest, ServerNotification>, scope: string): BotRecord {
+  // handleMcp already resolved the bearer (OAuth access token or legacy bot token) into a bot.
+  const resolved = extra.authInfo?.clientId ? botById(extra.authInfo.clientId) : undefined;
   const token = (extra.authInfo?.token || header(extra, "authorization").replace(/^Bearer\s+/i, "")).trim();
-  if (!token) throw new ApiError(401, "unauthorized", "Send Authorization: Bearer <bot token>.");
-  const bot = botByToken(token);
+  if (!resolved && !token) throw new ApiError(401, "unauthorized", "Send Authorization: Bearer <bot token>.");
+  const bot = resolved ? { ...resolved, scopes: extra.authInfo?.scopes ?? resolved.scopes } : botByToken(token);
   if (!bot) throw new ApiError(401, "unauthorized", "Unknown bot token.");
   if (bot.revoked_at) throw new ApiError(401, "bot_revoked", "This bot was revoked.");
   if (!bot.scopes.includes(scope)) throw new ApiError(403, "scope_missing", `Missing scope ${scope}.`, { scope });
@@ -65,6 +68,7 @@ export function createMcpServer() {
     "search_products",
     {
       title: "Search products",
+      annotations: { title: "Search products", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       description: "Search Mercavine sellers. Launch categories: home-improvement, tools, electronics-accessories. Outdoor is secondary. Lane shopify queries Shopify Catalog when SHOPIFY_CATALOG_ENABLED=true. Lane shop queries Shop's global catalog. Each result is labeled source native, shopify, or shop. Shop results are not cached.",
       inputSchema: {
         query: z.string().describe("What the shopper wants, for example brass door hinges"),
@@ -88,6 +92,7 @@ export function createMcpServer() {
     "get_product",
     {
       title: "Get a product",
+      annotations: { title: "Get a product", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       description: "Fetch one product. Ids that start with shop: come from Shop. Shopify ids require the catalog flag. Missing or unavailable Shop fields are not linkable.",
       inputSchema: {
         product_id: z.string(),
@@ -107,6 +112,7 @@ export function createMcpServer() {
     "create_cart",
     {
       title: "Create a cart",
+      annotations: { title: "Create a cart", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       description: "Create a server-side draft cart. Prices are quotes until request_checkout. Requires idempotency_key. Do not send payment details.",
       inputSchema: {
         lines: z.array(z.object({
@@ -153,6 +159,7 @@ export function createMcpServer() {
     "update_cart",
     {
       title: "Update a draft cart",
+      annotations: { title: "Update a draft cart", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       description: "Replace lines or the saved shipping address on a draft cart. Requires idempotency_key.",
       inputSchema: {
         cart_id: z.string(),
@@ -197,6 +204,7 @@ export function createMcpServer() {
     "request_checkout",
     {
       title: "Request human checkout",
+      annotations: { title: "Request human checkout", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       description: "Lock price and stock and return a single-use, short-lived approval URL. The human opens it and pays. You must not complete payment or ask for card data. Shopify carts return continue_url instead of a Mercavine charge. Shop Pay carts return an approval URL first; after the human approves, get_cart includes shop_pay.continue_url. The 3% fee does not apply to Shop Pay.",
       inputSchema: {
         cart_id: z.string(),
@@ -224,6 +232,7 @@ export function createMcpServer() {
     "get_cart",
     {
       title: "Get a cart",
+      annotations: { title: "Get a cart", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description: "Read the server-side cart, including status and order ids. No payment secrets.",
       inputSchema: { cart_id: z.string() },
     },
@@ -234,6 +243,7 @@ export function createMcpServer() {
     "cancel_cart",
     {
       title: "Cancel a cart",
+      annotations: { title: "Cancel a cart", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
       description: "Cancel a draft or a cart that is waiting for approval.",
       inputSchema: { cart_id: z.string(), reason: z.string().optional(), idempotency_key: z.string().min(8) },
     },
@@ -249,6 +259,7 @@ export function createMcpServer() {
     "connect_shop_pay",
     {
       title: "Sign in with Shop",
+      annotations: { title: "Sign in with Shop", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       description: "Start Sign in with Shop for this shopper. Returns a user code and verification URL only. Never returns a token, card, or payment credential.",
       inputSchema: { device_name: z.string().max(64).optional() },
     },
@@ -263,6 +274,7 @@ export function createMcpServer() {
     "shop_pay_status",
     {
       title: "Shop Pay link status",
+      annotations: { title: "Shop Pay link status", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       description: "Whether this shopper has linked Shop Pay. Does not return tokens or card data.",
       inputSchema: {},
     },
@@ -273,6 +285,7 @@ export function createMcpServer() {
     "list_orders",
     {
       title: "List orders",
+      annotations: { title: "List orders", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description: "List the shopper's orders. Optionally filter by cart_id.",
       inputSchema: { cart_id: z.string().optional() },
     },
@@ -283,6 +296,7 @@ export function createMcpServer() {
     "get_order_status",
     {
       title: "Get order status",
+      annotations: { title: "Get order status", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       description: "Status, seller, lines, totals, and tracking. When the seller connected Amazon MCF and the listing is FBA-backed, tracking can come from that fulfillment order. prime_delivery on an offer is true only when that seller is enrolled. payment_status is pending, authorized, paid, failed, or refunded. Card data is never included. Do not order on amazon.com.",
       inputSchema: { order_id: z.string() },
     },
@@ -293,6 +307,7 @@ export function createMcpServer() {
     "cancel_order",
     {
       title: "Cancel an order",
+      annotations: { title: "Cancel an order", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
       description: "Cancel before the seller accepts and refund the original payment method. You cannot redirect a refund.",
       inputSchema: { order_id: z.string(), reason: z.string().optional(), idempotency_key: z.string().min(8) },
     },
@@ -308,6 +323,7 @@ export function createMcpServer() {
     "request_return",
     {
       title: "Request a return",
+      annotations: { title: "Request a return", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
       description: "Start a return under the seller's policy. Refunds go to the original payment method only.",
       inputSchema: {
         order_id: z.string(),
@@ -334,12 +350,18 @@ export function createMcpServer() {
 }
 
 export async function handleMcp(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-allow-headers": "authorization, content-type, mcp-protocol-version, mcp-session-id", "access-control-expose-headers": "www-authenticate, mcp-session-id" } });
+  }
+  // Every MCP request, including initialize, needs a bearer: OAuth access token or legacy bot token.
+  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return mcpChallenge();
+  const bot = botForMcpToken(token);
+  if (!bot) return mcpChallenge("invalid_token");
   const server = createMcpServer();
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
-  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  const bot = token ? botByToken(token) : undefined;
   return transport.handleRequest(req, {
-    authInfo: bot ? { token, clientId: bot.id, scopes: bot.scopes } : undefined,
+    authInfo: { token, clientId: bot.id, scopes: bot.scopes },
   });
 }

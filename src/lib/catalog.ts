@@ -49,9 +49,11 @@ type SearchRow = {
 
 /** SQL predicate for sellers whose offers shoppers may see and buy. */
 export function sellerVisibleSql(alias = "s"): string {
-  const base = `${alias}.status = 'active'`;
-  if (config().sampleCatalog) return base;
-  return `${base} AND ${alias}.user_id IS NOT NULL AND ${alias}.stripe_charges_enabled = 1 AND ${alias}.stripe_account_id LIKE 'acct_%' AND ${alias}.stripe_account_id NOT LIKE 'acct_mock%'`;
+  // The first-party Mercavine Store is visible only when MERCAVINE_STORE_ENABLED=true (see first-party.ts).
+  const firstParty = process.env.MERCAVINE_STORE_ENABLED === "true" ? `${alias}.first_party = 1` : "0";
+  if (config().sampleCatalog) return `${alias}.status = 'active' AND (${alias}.first_party = 0 OR ${firstParty})`;
+  const connect = `${alias}.first_party = 0 AND ${alias}.user_id IS NOT NULL AND ${alias}.stripe_charges_enabled = 1 AND ${alias}.stripe_account_id LIKE 'acct_%' AND ${alias}.stripe_account_id NOT LIKE 'acct_mock%'`;
+  return `${alias}.status = 'active' AND (${firstParty} OR (${connect}))`;
 }
 
 function heldSql() {

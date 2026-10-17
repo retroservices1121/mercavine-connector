@@ -170,7 +170,7 @@ export function config(): AppConfig {
     passkeyOrigin: process.env.PASSKEY_ORIGIN?.trim() || passkeyOrigin,
     contactName: process.env.CONTACT_NAME?.trim() || "Joe Perez",
     contactRole: process.env.CONTACT_ROLE?.trim() || "CEO",
-    contactEmail: process.env.CONTACT_EMAIL?.trim() || "mercavine-outreach@mail.grokbot.com",
+    contactEmail: process.env.CONTACT_EMAIL?.trim() || "support@mercavine.com",
     websiteUrl: process.env.WEBSITE_URL?.trim() || "",
   };
 }

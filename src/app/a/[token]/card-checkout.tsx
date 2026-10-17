@@ -13,7 +13,7 @@ const stripeCache = new Map<string, Promise<Stripe | null>>();
 function stripeFor(key: string, account: string) {
   // Direct charges: Elements must be initialized on the seller's connected account.
   const id = `${key}:${account}`;
-  if (!stripeCache.has(id)) stripeCache.set(id, loadStripe(key, { stripeAccount: account }));
+  if (!stripeCache.has(id)) stripeCache.set(id, loadStripe(key, account === "platform" ? undefined : { stripeAccount: account }));
   return stripeCache.get(id)!;
 }
 

@@ -437,10 +437,61 @@ CREATE TABLE IF NOT EXISTS email_tokens (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_email_tokens_user ON email_tokens(user_id, purpose);
+
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id TEXT PRIMARY KEY,
+  client_secret_hash TEXT,
+  client_name TEXT NOT NULL,
+  redirect_uris TEXT NOT NULL,
+  token_endpoint_auth_method TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oauth_requests (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL REFERENCES oauth_clients(client_id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  redirect_uri TEXT NOT NULL,
+  scopes TEXT NOT NULL,
+  state TEXT,
+  code_challenge TEXT NOT NULL,
+  resource TEXT,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS oauth_codes (
+  code_hash TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  bot_id TEXT NOT NULL REFERENCES bots(id),
+  redirect_uri TEXT NOT NULL,
+  code_challenge TEXT NOT NULL,
+  scopes TEXT NOT NULL,
+  resource TEXT,
+  family TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  token_hash TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  bot_id TEXT NOT NULL REFERENCES bots(id),
+  scopes TEXT NOT NULL,
+  resource TEXT,
+  family TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS oauth_tokens_family ON oauth_tokens(family);
+CREATE INDEX IF NOT EXISTS oauth_tokens_bot ON oauth_tokens(bot_id);
 `;
 
 function migrate(db: DatabaseSync): void {
-  // 1 = MCP-only connection (e.g. Grok Bot over /mcp), which cannot sign REST requests.
+  // 1 = MCP-only connection (OAuth connectors such as Grok), never used on the signed REST path.
   addColumn(db, "bots", "mcp_only", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "orders", "payment_provider", "TEXT NOT NULL DEFAULT 'stripe'");
   // TODO(email-verification): send a verification link and set this to 1 on confirm. Not enforced yet.
@@ -471,6 +522,24 @@ function migrate(db: DatabaseSync): void {
   addColumn(db, "payment_attempts", "updated_at", "TEXT");
   db.exec(`CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, received_at TEXT NOT NULL)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sellers_user ON sellers(user_id)`);
+  // First-party Mercavine Store + CJdropshipping supplier tables.
+  addColumn(db, "sellers", "first_party", "INTEGER NOT NULL DEFAULT 0");
+  db.exec(`CREATE TABLE IF NOT EXISTS supplier_products (
+    pid TEXT PRIMARY KEY, vid TEXT NOT NULL, supplier TEXT NOT NULL, name TEXT NOT NULL, category_id TEXT,
+    cost_cents INTEGER NOT NULL, freight_cents INTEGER NOT NULL, logistic_name TEXT, us_stock INTEGER NOT NULL,
+    price_cents INTEGER NOT NULL, status TEXT NOT NULL, last_synced_at TEXT NOT NULL, created_at TEXT NOT NULL)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS supplier_product_map (
+    offer_id TEXT PRIMARY KEY REFERENCES offers(id), pid TEXT NOT NULL REFERENCES supplier_products(pid), vid TEXT NOT NULL)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_spm_pid ON supplier_product_map(pid)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS supplier_orders (
+    id TEXT PRIMARY KEY, cart_id TEXT NOT NULL UNIQUE, order_id TEXT, supplier TEXT NOT NULL, status TEXT NOT NULL,
+    dedupe_key TEXT NOT NULL UNIQUE, cj_order_id TEXT, cj_status TEXT, tracking_number TEXT, tracking_url TEXT,
+    request_json TEXT, detail TEXT, approved_by TEXT, approved_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+  // Sales tax for first-party sales (see tax.ts). One row per cart+seller; basis = what it was computed on.
+  db.exec(`CREATE TABLE IF NOT EXISTS tax_quotes (
+    cart_id TEXT NOT NULL, seller_id TEXT NOT NULL, basis TEXT NOT NULL, provider TEXT NOT NULL, tax_cents INTEGER NOT NULL,
+    approximate INTEGER NOT NULL DEFAULT 0, calculation_id TEXT, order_id TEXT, transaction_id TEXT, reversal_id TEXT,
+    stripe_account TEXT, created_at TEXT NOT NULL, PRIMARY KEY (cart_id, seller_id))`);
 }
 
 function addColumn(db: DatabaseSync, table: string, column: string, ddl: string): void {

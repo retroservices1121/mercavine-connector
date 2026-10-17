@@ -257,13 +257,15 @@ function quote(db: DatabaseSync, cart: CartRow) {
     shipping: number;
     tax: number;
     total: number;
+    taxPending: boolean;
+    firstParty: boolean;
   }>();
   for (const line of lines) {
     let group = groups.get(line.seller_id);
     if (!group) {
-      const seller = one<{ rating: number; rating_count: number; statement_descriptor: string; stripe_account_id: string }>(
+      const seller = one<{ rating: number; rating_count: number; statement_descriptor: string; stripe_account_id: string; first_party: number }>(
         db,
-        `SELECT rating, rating_count, statement_descriptor, stripe_account_id FROM sellers WHERE id = ?`,
+        `SELECT rating, rating_count, statement_descriptor, stripe_account_id, first_party FROM sellers WHERE id = ?`,
         line.seller_id,
       );
       group = {
@@ -280,6 +282,8 @@ function quote(db: DatabaseSync, cart: CartRow) {
         shipping: 0,
         tax: 0,
         total: 0,
+        taxPending: false,
+        firstParty: seller?.first_party === 1,
       };
       groups.set(line.seller_id, group);
     }
@@ -292,13 +296,26 @@ function quote(db: DatabaseSync, cart: CartRow) {
   let shipping = 0;
   let tax = 0;
   for (const group of groups.values()) {
-    group.tax = taxCents(group.subtotal + group.shipping, bps);
+    if (group.firstParty) {
+      // Mercavine Store: tax comes only from a stored quote computed on exactly this basis (tax.ts).
+      const tq = one<{ basis: string; tax_cents: number }>(db, `SELECT basis, tax_cents FROM tax_quotes WHERE cart_id = ? AND seller_id = ?`, cart.id, group.seller.id);
+      const fresh = tq !== undefined && tq.basis === taxBasis(group.subtotal, group.shipping, address);
+      group.tax = fresh ? tq.tax_cents : 0;
+      group.taxPending = !fresh && cart.lane !== "shop_pay";
+    } else {
+      group.tax = taxCents(group.subtotal + group.shipping, bps);
+    }
     group.total = group.subtotal + group.shipping + group.tax;
     subtotal += group.subtotal;
     shipping += group.shipping;
     tax += group.tax;
   }
   return { lines, address, taxBps: bps, groups: [...groups.values()], subtotal, shipping, tax, grand: subtotal + shipping + tax };
+}
+
+/** What a first-party tax quote was computed on. Any change (price, qty, shipping, address) invalidates it. */
+export function taxBasis(subtotal: number, shipping: number, address: AddressRow | undefined): string {
+  return [subtotal, shipping, address?.id ?? "", address?.line1 ?? "", address?.city ?? "", (address?.region ?? "").toUpperCase(), address?.postal_code ?? ""].join("|");
 }
 
 function paymentStatus(cart: CartRow): "pending" | "authorized" | "paid" | "failed" | "refunded" {
@@ -347,6 +364,7 @@ export function toBotCart(db: DatabaseSync, cartId: string) {
       })),
       shipping: group.shipping,
       tax: group.tax,
+      ...(group.firstParty ? { tax_status: group.taxPending ? "calculated_at_checkout" : "calculated" } : {}),
       subtotal: group.subtotal,
       total: group.total,
     })),
@@ -979,6 +997,10 @@ function autoMatches(db: DatabaseSync, bot: BotRecord, cartId: string): boolean 
 
 function chargesFor(db: DatabaseSync, cartId: string): SellerCharge[] {
   const view = quote(db, mustCart(db, cartId));
+  if (view.groups.some((group) => group.taxPending)) {
+    // Fail closed: never create a payment for a first-party group without a current tax quote.
+    throw new ApiError(409, "tax_required", "Sales tax for this order needs to be recalculated. Nothing was charged.");
+  }
   return view.groups
     .filter((group) => group.total > 0)
     .map((group) =>
@@ -1286,6 +1308,15 @@ export function noteFailedApprovalLogin(nextPath: string | null) {
   });
 }
 
+/** Mercavine Store: re-check CJ stock/price, then compute tax, before any PaymentIntent exists. */
+async function prepareFirstPartyFor(rawToken: string) {
+  if (config().paymentMode !== "stripe") return;
+  const token = tokenRow(getDb(), rawToken);
+  if (!token) return;
+  const { cartHasFirstParty, prepareCheckout } = await import("./cj-store");
+  if (cartHasFirstParty(getDb(), token.cart_id)) await prepareCheckout(token.cart_id);
+}
+
 export async function approveCart(input: {
   rawToken: string;
   userId: string;
@@ -1295,6 +1326,7 @@ export async function approveCart(input: {
   failSellerId?: string;
 }) {
   assertEmailVerified(input.userId);
+  await prepareFirstPartyFor(input.rawToken);
   const prepared = transaction((db) => {
     const token = tokenRow(db, input.rawToken);
     if (!token || token.revoked_at) throw new ApiError(409, "invalid_state", "This approval link is no longer valid.");
@@ -1463,6 +1495,8 @@ export async function cardSession(input: { rawToken: string; userId: string }) {
   const cart = transaction((db) => approvedCardCart(db, input.rawToken, input.userId));
   if (cart.status === "paid") return { paid: true as const, cart: toHumanCart(getDb(), cart.id) };
   if (cart.status !== "approved" || cart.lane === "shop_pay") throw new ApiError(409, "invalid_state", `This cart is ${cart.status}.`, { status: cart.status });
+  const { cartHasFirstParty, prepareCheckout } = await import("./cj-store");
+  if (cartHasFirstParty(getDb(), cart.id)) await prepareCheckout(cart.id);
   const intents = await createCardIntents(getDb(), cart.id, cart.bot_client_id, chargesFor(getDb(), cart.id));
   return { paid: false as const, code: "card_required", payment: cardPayload(intents) };
 }
