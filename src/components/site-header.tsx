@@ -2,7 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { config } from "@/lib/config";
 
-export function SiteHeader({ signedIn = false }: { signedIn?: boolean }) {
+/** `seller` = a seller session: shows the Seller dashboard button instead of the shopper Account link. */
+export function SiteHeader({ signedIn = false, seller = false }: { signedIn?: boolean; seller?: boolean }) {
   const cfg = config();
   return (
     <header className="border-b border-[var(--line)] bg-[var(--paper)]/95">
@@ -15,10 +16,13 @@ export function SiteHeader({ signedIn = false }: { signedIn?: boolean }) {
           <Link href="/#how-it-works" className="hidden sm:inline hover:text-[var(--ink)]">How it works</Link>
           <Link href="/sell" className="hidden sm:inline hover:text-[var(--ink)]">Sell</Link>
           <Link href="/#faq" className="hidden sm:inline hover:text-[var(--ink)]">FAQ</Link>
-          {signedIn ? <Link href="/sellers" className="hover:text-[var(--ink)]">Sellers</Link> : null}
-          <Link href={signedIn ? "/account" : "/login"} className="text-[var(--ink)]">
-            {signedIn ? "Account" : "Sign in"}
-          </Link>
+          {seller ? (
+            <Link href="/seller" className="rounded-full border border-[var(--line)] px-4 py-2 text-[var(--ink)] hover:bg-[var(--card)]">Seller dashboard</Link>
+          ) : (
+            <Link href={signedIn ? "/account" : "/login"} className="text-[var(--ink)]">
+              {signedIn ? "Account" : "Sign in"}
+            </Link>
+          )}
           {!signedIn && (
             <Link href="/signup" className="rounded-full bg-[var(--vine)] px-4 py-2 text-[#f4efe4] hover:opacity-90">
               Sign up

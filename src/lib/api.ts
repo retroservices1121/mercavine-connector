@@ -1,6 +1,6 @@
 import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
-import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
+import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerOrders, listSellerProducts, relistSellerProduct, removeSellerProduct, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
 import { login, logout, requireBot, requireBuyer, requireSellerSession, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
 import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, cardSession, syncCardPayment, settleCardCart, noteCardFailure, type LineInput } from "./cart";
@@ -342,6 +342,20 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     const user = requireSellerSession(req);
     const { json } = await readJson(req);
     return cors(201, createSellerProduct(user.id, json));
+  }
+  if (parts[0] === "seller" && parts[1] === "orders" && parts.length === 2 && method === "GET") {
+    const user = requireSellerSession(req);
+    return cors(200, { orders: listSellerOrders(user.id) });
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts.length === 3 && method === "DELETE") {
+    assertSameOrigin(req);
+    const user = requireSellerSession(req);
+    return cors(200, removeSellerProduct(user.id, parts[2]));
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts[3] === "relist" && parts.length === 4 && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireSellerSession(req);
+    return cors(200, relistSellerProduct(user.id, parts[2]));
   }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 3 && (method === "PATCH" || method === "PUT")) {
     assertSameOrigin(req);
