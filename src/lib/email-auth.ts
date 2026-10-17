@@ -11,7 +11,8 @@ import { one, run } from "./sql";
 
 export const VERIFY_TTL_HOURS = 24;
 export const RESET_TTL_HOURS = 1;
-type Purpose = "verify" | "reset";
+export const UNLOCK_TTL_HOURS = 24;
+type Purpose = "verify" | "reset" | "unlock";
 
 function siteUrl(): string {
   const base = process.env.MAIL_LINK_BASE_URL?.trim() || `https://${config().brandDomain}`;
@@ -134,5 +135,34 @@ export function resetPassword(token: string, password: unknown): { user_id: stri
     const revoked = Number(db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId).changes);
     // Bot tokens are intentionally left active; the shopper can revoke them at /account/bots.
     return { user_id: userId, sessions_revoked: revoked };
+  });
+}
+
+// ---------- account unlock (login lockout) ----------
+
+/** Email a one-time link that lifts a login lockout early. */
+export async function sendUnlockEmail(userId: string, email: string): Promise<void> {
+  try {
+    const token = transaction((db) => issue(db, userId, "unlock", UNLOCK_TTL_HOURS));
+    const link = `${siteUrl()}/api/v1/session/unlock?token=${encodeURIComponent(token)}`;
+    await sendMail({
+      to: email,
+      tag: "unlock",
+      subject: "Your Mercavine sign-in was locked",
+      text: `We locked sign-in to your Mercavine account after ${10} failed password attempts.\n\nIf this was you, unlock now: ${link}\nThe lock also lifts on its own in about 30 minutes.\n\nIf this was not you, reset your password at ${siteUrl()}/forgot-password and contact security@mercavine.com.`,
+    });
+  } catch {
+    console.warn("[mailer] unlock email failed");
+  }
+}
+
+/** Consume an unlock token and clear the account lock. Returns the email that was unlocked. */
+export function consumeUnlockToken(token: string): string {
+  return transaction((db) => {
+    const userId = consume(db, token, "unlock");
+    const user = one<{ email: string }>(db, `SELECT email FROM users WHERE id = ?`, userId);
+    if (!user) throw new ApiError(400, "invalid_token", "This link is invalid or expired.");
+    run(db, `DELETE FROM login_failures WHERE kind = 'account' AND subject = ?`, user.email.toLowerCase());
+    return user.email;
   });
 }

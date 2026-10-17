@@ -1,4 +1,4 @@
-import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
+import { consumeUnlockToken, forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
 import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerOrders, listSellerProducts, relistSellerProduct, removeSellerProduct, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
@@ -106,11 +106,21 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     assertSameOrigin(req);
     const { json } = await readJson(req);
     try {
-      const result = login(String(json.email ?? ""), String(json.password ?? ""));
+      const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || null;
+      const result = login(String(json.email ?? ""), String(json.password ?? ""), ip);
       return cors(200, { user: result.user }, { "set-cookie": sessionCookie(result.token) });
     } catch (error) {
       if (error instanceof ApiError && error.code === "invalid_login") noteFailedApprovalLogin(String(json.next ?? ""));
       throw error;
+    }
+  }
+  if (parts[0] === "session" && parts[1] === "unlock" && method === "GET") {
+    const base = config().publicBaseUrl.replace(/\/$/, "");
+    try {
+      consumeUnlockToken(url.searchParams.get("token") ?? "");
+      return new Response(null, { status: 303, headers: { location: `${base}/login?unlocked=1`, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+    } catch {
+      return new Response(null, { status: 303, headers: { location: `${base}/login?unlocked=0`, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
     }
   }
   if (parts[0] === "session" && method === "DELETE") {
