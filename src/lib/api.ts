@@ -1,8 +1,8 @@
-import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
+import { consumeUnlockToken, forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
-import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
+import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerOrders, listSellerProducts, relistSellerProduct, removeSellerProduct, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
 import { amazonSellerPublic, connectAmazonSeller, setPrimeEnrolled } from "./amazon-mcf";
-import { login, logout, requireBot, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
+import { login, logout, requireBot, requireBuyer, requireSellerSession, requireUser, revokeBot, sessionCookie, clearSessionCookie, readCookie, assertSameOrigin, userFromSessionToken } from "./auth";
 import { noteFailedApprovalLogin, approveCart, declineCart, editPending, changeApprovalAddress, askBotToRefresh, createCart, updateCart, submitCart, getCartForBot, cancelCart, humanOrders, notificationsFor, sweepExpired, finishShopPayForUser, cardSession, syncCardPayment, settleCardCart, noteCardFailure, type LineInput } from "./cart";
 import { categoryLabels, brandSnapshot, searchNative } from "./catalog";
 import { config } from "./config";
@@ -106,11 +106,21 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     assertSameOrigin(req);
     const { json } = await readJson(req);
     try {
-      const result = login(String(json.email ?? ""), String(json.password ?? ""));
+      const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || null;
+      const result = login(String(json.email ?? ""), String(json.password ?? ""), ip);
       return cors(200, { user: result.user }, { "set-cookie": sessionCookie(result.token) });
     } catch (error) {
       if (error instanceof ApiError && error.code === "invalid_login") noteFailedApprovalLogin(String(json.next ?? ""));
       throw error;
+    }
+  }
+  if (parts[0] === "session" && parts[1] === "unlock" && method === "GET") {
+    const base = config().publicBaseUrl.replace(/\/$/, "");
+    try {
+      consumeUnlockToken(url.searchParams.get("token") ?? "");
+      return new Response(null, { status: 303, headers: { location: `${base}/login?unlocked=1`, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+    } catch {
+      return new Response(null, { status: 303, headers: { location: `${base}/login?unlocked=0`, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
     }
   }
   if (parts[0] === "session" && method === "DELETE") {
@@ -119,7 +129,7 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     return cors(204, null, { "set-cookie": clearSessionCookie() });
   }
   if (parts[0] === "me" && method === "GET") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const bots = many<{ id: string; name: string; revoked_at: string | null; approval_threshold_cents: number; per_month_limit_cents: number }>(
       getDb(),
       `SELECT id, name, revoked_at, approval_threshold_cents, per_month_limit_cents FROM bots WHERE user_id = ?`,
@@ -158,17 +168,17 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     return cors(200, { ok: true }, { "set-cookie": clearSessionCookie() });
   }
   if (parts[0] === "bots" && parts.length === 1 && method === "GET") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, { bots: listBots(user.id) });
   }
   if (parts[0] === "bots" && parts.length === 1 && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(201, createBot(user.id, json), { "cache-control": "no-store" });
   }
   if (parts[0] === "addresses") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     if (method === "GET" && parts.length === 1) return cors(200, { addresses: listAddresses(user.id) });
     assertSameOrigin(req);
     if (method === "POST" && parts.length === 1) {
@@ -187,29 +197,29 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
   }
   if (parts[0] === "bots" && parts[2] === "revoke" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, revokeBot(parts[1], user.id));
   }
   if (parts[0] === "passkeys" && parts[1] === "register" && parts[2] === "options" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await registrationOptions(user));
   }
   if (parts[0] === "passkeys" && parts[1] === "register" && parts[2] === "verify" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, await verifyRegistration(user.id, json as never));
   }
   if (parts[0] === "passkeys" && parts[1] === "authenticate" && parts[2] === "options" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await authenticationOptions(user.id));
   }
 
   if (parts[0] === "approvals" && parts[2] === "approve" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     let assertionId: string | undefined;
     if (json.method === "passkey") {
@@ -227,17 +237,17 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     return cors(result.paid || waiting ? 200 : 402, result, { "cache-control": "no-store" });
   }
   if (parts[0] === "approvals" && parts[2] === "payment" && parts.length === 3 && method === "GET") {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await cardSession({ rawToken: decodeURIComponent(parts[1]), userId: user.id }), { "cache-control": "no-store" });
   }
   if (parts[0] === "approvals" && parts[2] === "payment" && parts[3] === "sync" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await syncCardPayment({ rawToken: decodeURIComponent(parts[1]), userId: user.id }), { "cache-control": "no-store" });
   }
   if (parts[0] === "approvals" && parts[2] === "decline" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     const cart = declineCart({
       rawToken: decodeURIComponent(parts[1]),
@@ -250,102 +260,116 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
   }
   if (parts[0] === "approvals" && parts[2] === "edit" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, editPending({ rawToken: decodeURIComponent(parts[1]), userId: user.id, lines: (json.lines as { line_id: string; quantity: number }[]) ?? [] }));
   }
   if (parts[0] === "approvals" && parts[2] === "address" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, { cart: changeApprovalAddress(decodeURIComponent(parts[1]), user.id, String(json.address_id ?? "")) });
   }
   if (parts[0] === "approvals" && parts[2] === "refresh" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, askBotToRefresh(decodeURIComponent(parts[1]), user.id));
   }
 
   if (parts[0] === "shop" && parts[1] === "link" && method === "GET" && parts.length === 2) {
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, shopLinkPublic(user.id));
   }
   if (parts[0] === "shop" && parts[1] === "link" && method === "POST" && parts.length === 2) {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     const { json } = await readJson(req);
     return cors(200, await startShopLink(user.id, String(json.device_name ?? "Mercavine")));
   }
   if (parts[0] === "shop" && parts[1] === "link" && parts[2] === "poll" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await pollShopLink(user.id));
   }
   if (parts[0] === "shop" && parts[1] === "pay" && parts[3] === "finish" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireBuyer(req);
     return cors(200, await finishShopPayForUser(parts[2], user.id));
   }
 
   if (parts[0] === "sellers" && parts[2] === "amazon" && parts[3] === "connect" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     assertSellerAccess(parts[1], user.id);
     return cors(200, connectAmazonSeller(parts[1]));
   }
   if (parts[0] === "sellers" && parts[2] === "amazon" && parts[3] === "prime" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     assertSellerAccess(parts[1], user.id);
     const { json } = await readJson(req);
     return cors(200, setPrimeEnrolled(parts[1], Boolean(json.enrolled)));
   }
   if (parts[0] === "sellers" && parts[2] === "amazon" && method === "GET" && parts.length === 3) {
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     assertSellerAccess(parts[1], user.id);
     return cors(200, amazonSellerPublic(parts[1]));
   }
 
   if (parts[0] === "sellers" && parts[1] === "signup" && parts.length === 2 && method === "POST") {
     assertSameOrigin(req);
-    const signedIn = sessionUserFromRequest(req);
+    // Seller logins are separate identities: always a new email + password, never the signed-in shopper account.
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
     sellerSignupRateLimit(`seller:${ip}`);
     const { json } = await readJson(req);
-    const result = createSellerAccount(json, signedIn?.id);
+    const result = createSellerAccount(json);
     if (!result.created) return cors(201, { seller_id: result.seller.id, status: result.seller.status });
     const session = login(result.email, String(json.password ?? ""));
     await sendVerification(result.userId);
     return cors(201, { seller_id: result.seller.id, status: result.seller.status, email_verified: false }, { "set-cookie": sessionCookie(session.token) });
   }
   if (parts[0] === "seller" && parts[1] === "dashboard" && method === "GET") {
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     return cors(200, sellerDashboard(user.id));
   }
   if (parts[0] === "seller" && parts[1] === "stripe" && parts[2] === "onboard" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     return cors(200, await startStripeOnboarding(user.id), { "cache-control": "no-store" });
   }
   if (parts[0] === "seller" && parts[1] === "stripe" && parts[2] === "refresh" && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     await refreshStripeStatus(user.id);
     return cors(200, sellerDashboard(user.id));
   }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 2 && method === "GET") {
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     return cors(200, { products: listSellerProducts(user.id) });
   }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 2 && method === "POST") {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     const { json } = await readJson(req);
     return cors(201, createSellerProduct(user.id, json));
   }
+  if (parts[0] === "seller" && parts[1] === "orders" && parts.length === 2 && method === "GET") {
+    const user = requireSellerSession(req);
+    return cors(200, { orders: listSellerOrders(user.id) });
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts.length === 3 && method === "DELETE") {
+    assertSameOrigin(req);
+    const user = requireSellerSession(req);
+    return cors(200, removeSellerProduct(user.id, parts[2]));
+  }
+  if (parts[0] === "seller" && parts[1] === "products" && parts[3] === "relist" && parts.length === 4 && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireSellerSession(req);
+    return cors(200, relistSellerProduct(user.id, parts[2]));
+  }
   if (parts[0] === "seller" && parts[1] === "products" && parts.length === 3 && (method === "PATCH" || method === "PUT")) {
     assertSameOrigin(req);
-    const user = requireUser(req);
+    const user = requireSellerSession(req);
     const { json } = await readJson(req);
     return cors(200, updateSellerProduct(user.id, parts[2], json));
   }
@@ -550,12 +574,25 @@ export function sessionUserFromRequest(req: Request) {
  * Cron hits sync/refresh/tracking; a human approves or rejects held orders.
  */
 async function adminRoute(req: Request, method: string, parts: string[]): Promise<Response> {
-  const expected = process.env.MERCAVINE_ADMIN_TOKEN?.trim();
-  if (!expected || expected.length < 24) throw new ApiError(404, "not_found", "Not found.");
-  const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const { timingSafeEqual, createHash } = await import("node:crypto");
-  const h = (v: string) => createHash("sha256").update(v).digest();
-  if (!timingSafeEqual(h(got), h(expected))) throw new ApiError(401, "unauthorized", "Admin token required.");
+  const { adminTokenConfigured, adminTokenMatches, adminCookie, readCookieValue, ADMIN_COOKIE } = await import("./admin-auth");
+  if (!adminTokenConfigured()) throw new ApiError(404, "not_found", "Not found.");
+  // Admin screen sign-in: token in the POST body only, answered with an httpOnly SameSite=Strict cookie.
+  if (parts[0] === "session" && parts.length === 1) {
+    assertSameOrigin(req);
+    if (method === "DELETE") return cors(200, { ok: true }, { "set-cookie": adminCookie("", 0) });
+    if (method === "POST") {
+      const { json } = await readJson(req);
+      if (!adminTokenMatches(typeof json.token === "string" ? json.token.trim() : "")) throw new ApiError(401, "unauthorized", "That admin token isn't right.");
+      return cors(200, { ok: true }, { "set-cookie": adminCookie(String(json.token).trim(), 8 * 3600) });
+    }
+  }
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const viaCookie = !bearer && adminTokenMatches(readCookieValue(req.headers.get("cookie"), ADMIN_COOKIE));
+  if (!adminTokenMatches(bearer) && !viaCookie) throw new ApiError(401, "unauthorized", "Admin token required.");
+  if (viaCookie) {
+    assertSameOrigin(req);
+    if (method !== "GET" && !req.headers.get("origin")) throw new ApiError(403, "bad_origin", "Origin required.");
+  }
   const store = await import("./cj-store");
   const { json } = method === "POST" ? await readJson(req) : { json: {} as Record<string, unknown> };
   const admin = String(json.admin ?? "admin").slice(0, 64);
@@ -566,6 +603,17 @@ async function adminRoute(req: Request, method: string, parts: string[]): Promis
     const { pointsUsedToday, cjConfigured } = await import("./cj");
     const cfg = store.storeConfig();
     return cors(200, { configured: cjConfigured(), points_today: pointsUsedToday(), orders_live: cfg.ordersLive, margin_bps: cfg.marginBps, min_price_cents: cfg.minPriceCents });
+  }
+  if (parts[0] === "jobs" && method === "GET") {
+    const { jobStatus, jobsConfig } = await import("./store-jobs");
+    return cors(200, { config: jobsConfig(), last: jobStatus() });
+  }
+  if (parts[0] === "jobs" && method === "POST" && parts[1]) {
+    const { jobs, runJob } = await import("./store-jobs");
+    const name = parts[1] as keyof typeof jobs;
+    if (!(name in jobs)) throw new ApiError(404, "not_found", "Unknown job.");
+    const out = await runJob(name, jobs[name]);
+    return cors(out === null ? 409 : 200, out === null ? { error: { code: "busy_or_failed", message: "Job is already running or failed; see GET /admin/jobs." } } : out);
   }
   if (parts[0] === "supplier-orders" && method === "GET" && parts.length === 1) return cors(200, { data: store.listSupplierOrders() });
   if (parts[0] === "supplier-orders" && method === "POST" && parts[2] === "approve") return cors(200, await store.approveSupplierOrder(parts[1], admin));

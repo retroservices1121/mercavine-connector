@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { userFromSessionToken } from "@/lib/auth";
+import { buyerFromSessionToken } from "@/lib/auth";
 import { loadApproval } from "@/lib/cart";
 import { config } from "@/lib/config";
 import { feePercentLabel, formatUsd } from "@/lib/money";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function ApprovalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const jar = await cookies();
-  const user = userFromSessionToken(jar.get("mv_session")?.value);
+  const user = buyerFromSessionToken(jar.get("mv_session")?.value);
   if (!user) redirect(`/login?next=${encodeURIComponent(`/a/${token}`)}`);
   const view = loadApproval(token, user.id);
   const cfg = config();

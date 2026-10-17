@@ -225,7 +225,7 @@ export function decideConsent(requestId: string, userId: string, approve: boolea
     if (!approve) return errorRedirect(r.redirect_uri, "access_denied", "The user denied access.", r.state);
     const client = getClient(r.client_id)!;
     const groups = JSON.parse(r.scopes) as string[];
-    const bot = createBot(userId, { name: client.client_name, scopes: groups });
+    const bot = createBot(userId, { name: client.client_name, scopes: groups, mcp_only: true });
     run(db, `UPDATE bots SET mcp_only = 1 WHERE id = ?`, bot.id);
     const code = `mvac_${randomToken(32)}`;
     run(

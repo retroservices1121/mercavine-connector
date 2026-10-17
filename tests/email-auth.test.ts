@@ -1,3 +1,4 @@
+import { DEV_BOT_PUBLIC_KEY } from "@/lib/dev-keys";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetSignupRateLimits } from "../src/lib/accounts";
 import { handleApi } from "../src/lib/api";
@@ -83,7 +84,7 @@ describe("email verification and password reset", () => {
 
   it("resets the password once, revokes sessions and other reset tokens, keeps bot tokens", async () => {
     const cookie = await signup("r2@example.com");
-    const bot = (await (await post("/api/v1/bots", { scopes: ["shop"] }, { cookie })).json()) as { token: string };
+    const bot = (await (await post("/api/v1/bots", { scopes: ["shop"], public_key_pem: DEV_BOT_PUBLIC_KEY }, { cookie })).json()) as { token: string };
     await post("/api/v1/password/forgot", { email: "r2@example.com" });
     await post("/api/v1/password/forgot", { email: "r2@example.com" });
     const resets = mailOutbox().filter((m) => m.tag === "password_reset");

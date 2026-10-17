@@ -34,8 +34,13 @@ export function resetSignupRateLimits() {
   signupBuckets.clear();
 }
 
-export function createUser(input: { email: unknown; password: unknown; name?: unknown }): { id: string; email: string } {
-  const email = String(input.email ?? "").trim().toLowerCase();
+/** Trim, Unicode-normalize (NFKC) and lowercase, so case variants of one address collide. */
+export function normalizeEmail(value: unknown): string {
+  return String(value ?? "").normalize("NFKC").trim().toLowerCase();
+}
+
+export function createUser(input: { email: unknown; password: unknown; name?: unknown; accountType?: "buyer" | "seller" }): { id: string; email: string } {
+  const email = normalizeEmail(input.email);
   const password = String(input.password ?? "");
   const name = String(input.name ?? "").trim().slice(0, 80) || email.split("@")[0];
   if (!EMAIL_RE.test(email) || email.length > 254) throw new ApiError(422, "invalid_email", "Enter a valid email address.");
@@ -45,17 +50,19 @@ export function createUser(input: { email: unknown; password: unknown; name?: un
   if (password.length > 200) throw new ApiError(422, "weak_password", "Password is too long.");
   const id = newId("usr");
   const created = transaction((db) => {
-    if (one(db, `SELECT id FROM users WHERE email = ?`, email)) return false;
+    // Shopper and seller logins share one email namespace: an email used by either kind can't be reused by the other.
+    if (one(db, `SELECT id FROM users WHERE lower(trim(email)) = ?`, email)) return false;
     // TODO(email-verification): email_verified stays 0 until a verification flow exists.
     run(
       db,
-      `INSERT INTO users (id, email, name, display_name, password_hash, created_at, email_verified) VALUES (?, ?, ?, ?, ?, ?, 0)`,
-      id, email, name, name, hashPassword(password), nowIso(),
+      `INSERT INTO users (id, email, name, display_name, password_hash, created_at, email_verified, account_type) VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+      id, email, name, name, hashPassword(password), nowIso(), input.accountType ?? "buyer",
     );
     return true;
   });
-  // Generic message so sign-up cannot be used to probe which emails exist.
-  if (!created) throw new ApiError(422, "signup_failed", "Could not create an account with those details.");
+  // Same message whether the email belongs to a shopper or a seller account, so it never reveals which kind exists.
+  // (Saying "use a different email" unavoidably hints the email is taken; sign-up is rate limited.)
+  if (!created) throw new ApiError(422, "email_unavailable", "That email can't be used for a new account. Please use a different email address.");
   return { id, email };
 }
 
@@ -84,7 +91,7 @@ function cents(value: unknown, field: string): number | undefined {
 
 export function createBot(
   userId: string,
-  input: { name?: unknown; scopes?: unknown; public_key_pem?: unknown; per_order_limit_cents?: unknown; per_month_limit_cents?: unknown; approval_threshold_cents?: unknown },
+  input: { name?: unknown; scopes?: unknown; public_key_pem?: unknown; mcp_only?: unknown; per_order_limit_cents?: unknown; per_month_limit_cents?: unknown; approval_threshold_cents?: unknown },
 ) {
   const name = String(input.name ?? "").trim().slice(0, 80) || "My bot";
   const groups = Array.isArray(input.scopes) ? input.scopes.map(String) : ["shop", "checkout", "track"];
@@ -92,8 +99,13 @@ export function createBot(
     throw new ApiError(422, "invalid_scopes", "Scopes must be one or more of shop, checkout, track.");
   }
   const scopes = [...new Set(groups.flatMap((g) => SCOPE_GROUPS[g]))];
+  const mcpOnly = input.mcp_only === true;
   let publicKey: string | null = null;
-  if (typeof input.public_key_pem === "string" && input.public_key_pem.trim()) {
+  const hasKey = typeof input.public_key_pem === "string" && input.public_key_pem.trim() !== "";
+  if (!hasKey && !mcpOnly) {
+    throw new ApiError(422, "public_key_required", "An Ed25519 public key (PEM) is required to sign this bot's requests.");
+  }
+  if (hasKey && typeof input.public_key_pem === "string") {
     try {
       const key = createPublicKey(input.public_key_pem.trim());
       if (key.asymmetricKeyType !== "ed25519") throw new Error("type");
@@ -116,24 +128,32 @@ export function createBot(
     const categories = many<{ category: string }>(db, `SELECT DISTINCT category FROM products ORDER BY category`).map((r) => r.category);
     run(
       db,
-      `INSERT INTO bots (id, user_id, name, token_hash, public_key_pem, scopes, per_order_limit_cents, per_day_limit_cents,
+      `INSERT INTO bots (id, user_id, name, token_hash, public_key_pem, mcp_only, scopes, per_order_limit_cents, per_day_limit_cents,
         per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-      id, userId, name, sha256(token), publicKey, JSON.stringify(scopes),
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      id, userId, name, sha256(token), publicKey, mcpOnly ? 1 : 0, JSON.stringify(scopes),
       limits.per_order_limit_cents, limits.per_day_limit_cents, limits.per_month_limit_cents, limits.approval_threshold_cents,
       JSON.stringify(categories), nowIso(),
     );
   });
   // The plain token is returned once and never stored.
-  return { id, name, token, scopes, ...limits, signatures: publicKey ? "registered" : "none" };
+  return { id, name, token, scopes, ...limits, mcp_only: mcpOnly, signatures: publicKey ? "registered" : "none" };
 }
 
 export function listBots(userId: string) {
-  return many<{ id: string; name: string; scopes: string; revoked_at: string | null; per_order_limit_cents: number; per_month_limit_cents: number; approval_threshold_cents: number; created_at: string }>(
+  return many<{ id: string; name: string; scopes: string; revoked_at: string | null; per_order_limit_cents: number; per_month_limit_cents: number; approval_threshold_cents: number; created_at: string; has_key: number; mcp_only: number }>(
     getDb(),
-    `SELECT id, name, scopes, revoked_at, per_order_limit_cents, per_month_limit_cents, approval_threshold_cents, created_at FROM bots WHERE user_id = ? ORDER BY created_at DESC`,
+    `SELECT id, name, scopes, revoked_at, per_order_limit_cents, per_month_limit_cents, approval_threshold_cents, created_at,
+       (public_key_pem IS NOT NULL) AS has_key, mcp_only FROM bots WHERE user_id = ? ORDER BY created_at DESC`,
     userId,
-  ).map((b) => ({ ...b, scopes: JSON.parse(b.scopes) as string[] }));
+  ).map((b) => ({
+    ...b,
+    scopes: JSON.parse(b.scopes) as string[],
+    has_key: Boolean(b.has_key),
+    mcp_only: Boolean(b.mcp_only),
+    // Legacy bots made before keys were required: flagged until a key is added.
+    needs_key: !b.has_key && !b.mcp_only,
+  }));
 }
 
 // ---------- addresses ----------

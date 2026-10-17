@@ -4,6 +4,8 @@ import { addHours, nowIso } from "./clock";
 import { getDb, transaction } from "./db";
 import { ApiError } from "./errors";
 import { newId, randomToken, sha256 } from "./ids";
+import { sendUnlockEmail } from "./email-auth";
+import { assertNotLocked, clearAccountFailures, recordFailedLogin } from "./lockout";
 import { verifyPassword } from "./password";
 import { verifyBotSignature } from "./signatures";
 import { one, run } from "./sql";
@@ -13,6 +15,7 @@ export type BotRecord = {
   user_id: string;
   name: string;
   public_key_pem: string | null;
+  mcp_only: boolean;
   scopes: string[];
   per_order_limit_cents: number;
   per_day_limit_cents: number;
@@ -22,7 +25,7 @@ export type BotRecord = {
   revoked_at: string | null;
 };
 
-type BotRow = Omit<BotRecord, "scopes" | "allowed_categories"> & { scopes: string; allowed_categories: string };
+type BotRow = Omit<BotRecord, "scopes" | "allowed_categories" | "mcp_only"> & { scopes: string; allowed_categories: string; mcp_only: number };
 
 const buckets = new Map<string, { tokens: number; reset: number }>();
 
@@ -46,17 +49,23 @@ export function resetRateLimits() {
 }
 
 function mapBot(row: BotRow): BotRecord {
-  return { ...row, scopes: JSON.parse(row.scopes) as string[], allowed_categories: JSON.parse(row.allowed_categories) as string[] };
+  return { ...row, mcp_only: Boolean(row.mcp_only), scopes: JSON.parse(row.scopes) as string[], allowed_categories: JSON.parse(row.allowed_categories) as string[] };
 }
 
 export function botByToken(token: string, db: DatabaseSync = getDb()): BotRecord | undefined {
-  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE token_hash = ?`, sha256(token));
+  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, mcp_only, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE token_hash = ?`, sha256(token));
   return row ? mapBot(row) : undefined;
 }
 
 export function botById(id: string, db: DatabaseSync = getDb()): BotRecord | undefined {
-  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE id = ?`, id);
+  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, mcp_only, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE id = ?`, id);
   return row ? mapBot(row) : undefined;
+}
+
+export function botSignaturesEnforced(): boolean {
+  const cfg = config();
+  if (cfg.requireSignatures) return true;
+  return Boolean(cfg.botSignatureEnforceAfter && nowIso() >= new Date(cfg.botSignatureEnforceAfter).toISOString());
 }
 
 export async function requireBot(req: Request, rawBody: string, scope: string): Promise<BotRecord> {
@@ -70,23 +79,41 @@ export async function requireBot(req: Request, rawBody: string, scope: string): 
     throw new ApiError(403, "scope_missing", `This bot is missing the ${scope} scope.`, { scope });
   }
   rateLimit(bot.id);
+  // REST bot-connection path only. /mcp authenticates with botByToken and is never signature-gated here.
+  if (bot.mcp_only) {
+    throw new ApiError(401, "mcp_only_connection", "This bot connection is MCP-only. Use /mcp, or connect a bot with a signing key for the REST API.");
+  }
   const hasSignature = Boolean(req.headers.get("signature") || req.headers.get("signature-input"));
-  if (config().requireSignatures || hasSignature) await verifyBotSignature(req, rawBody, bot);
+  if (botSignaturesEnforced()) {
+    if (!bot.public_key_pem) {
+      throw new ApiError(401, "signature_key_missing", "This bot has no signing key. Add an Ed25519 public key in Connect your bot.");
+    }
+    await verifyBotSignature(req, rawBody, bot);
+  } else if (hasSignature) {
+    await verifyBotSignature(req, rawBody, bot);
+  }
   return bot;
 }
 
-export type SessionUser = { id: string; email: string; name: string; display_name: string };
+/** "buyer" = shopper account; "seller" = separate seller login. The two never share a session or data. */
+export type AccountType = "buyer" | "seller";
+export type SessionUser = { id: string; email: string; name: string; display_name: string; account_type: AccountType };
 
 export function userById(id: string, db: DatabaseSync = getDb()): SessionUser | undefined {
-  return one<SessionUser>(db, `SELECT id, email, name, display_name FROM users WHERE id = ?`, id);
+  return one<SessionUser>(db, `SELECT id, email, name, display_name, account_type FROM users WHERE id = ?`, id);
 }
 
-export function login(email: string, password: string): { token: string; user: SessionUser } {
+export function login(email: string, password: string, ip: string | null = null): { token: string; user: SessionUser } {
   const db = getDb();
-  const row = one<SessionUser & { password_hash: string }>(db, `SELECT id, email, name, display_name, password_hash FROM users WHERE email = ?`, email.trim().toLowerCase());
+  const normalized = email.trim().toLowerCase();
+  assertNotLocked(normalized, ip, db);
+  const row = one<SessionUser & { password_hash: string }>(db, `SELECT id, email, name, display_name, account_type, password_hash FROM users WHERE email = ?`, normalized);
   if (!row || !verifyPassword(password, row.password_hash)) {
+    const locks = recordFailedLogin(normalized, ip, db);
+    if (row && locks.some((l) => l.kind === "account")) void sendUnlockEmail(row.id, row.email);
     throw new ApiError(401, "invalid_login", "Email or password is wrong.");
   }
+  clearAccountFailures(normalized, db);
   const token = randomToken(32);
   run(
     db,
@@ -97,19 +124,19 @@ export function login(email: string, password: string): { token: string; user: S
     addHours(new Date(), 24 * 14),
     nowIso(),
   );
-  return { token, user: { id: row.id, email: row.email, name: row.name, display_name: row.display_name } };
+  return { token, user: { id: row.id, email: row.email, name: row.name, display_name: row.display_name, account_type: row.account_type } };
 }
 
 export function userFromSessionToken(token: string | undefined | null): SessionUser | undefined {
   if (!token) return undefined;
   const row = one<SessionUser & { expires_at: string }>(
     getDb(),
-    `SELECT u.id, u.email, u.name, u.display_name, s.expires_at
+    `SELECT u.id, u.email, u.name, u.display_name, u.account_type, s.expires_at
      FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
     sha256(token),
   );
   if (!row || row.expires_at < nowIso()) return undefined;
-  return { id: row.id, email: row.email, name: row.name, display_name: row.display_name };
+  return { id: row.id, email: row.email, name: row.name, display_name: row.display_name, account_type: row.account_type };
 }
 
 export function logout(token: string) {
@@ -138,6 +165,30 @@ export function requireUser(req: Request): SessionUser {
   const user = userFromSessionToken(readCookie(req, "mv_session"));
   if (!user) throw new ApiError(401, "login_required", "Sign in to continue.");
   return user;
+}
+
+/** Shopper-only routes. A seller session gets the same answer as no session, so nothing about the buyer side leaks. */
+export function requireBuyer(req: Request): SessionUser {
+  const user = requireUser(req);
+  if (user.account_type !== "buyer") throw new ApiError(401, "login_required", "Sign in with your shopping account to continue.");
+  return user;
+}
+
+/** Seller-only routes. A shopper session never sees seller data, even if the same person also has a seller login. */
+export function requireSellerSession(req: Request): SessionUser {
+  const user = requireUser(req);
+  if (user.account_type !== "seller") throw new ApiError(401, "seller_login_required", "Sign in with your seller account to continue.");
+  return user;
+}
+
+/** Page helpers: the session user only if it is the right kind of account. */
+export function buyerFromSessionToken(token: string | undefined | null): SessionUser | undefined {
+  const user = userFromSessionToken(token);
+  return user?.account_type === "buyer" ? user : undefined;
+}
+export function sellerUserFromSessionToken(token: string | undefined | null): SessionUser | undefined {
+  const user = userFromSessionToken(token);
+  return user?.account_type === "seller" ? user : undefined;
 }
 
 export function assertSameOrigin(req: Request) {

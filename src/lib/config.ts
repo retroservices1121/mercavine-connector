@@ -19,6 +19,7 @@ export type AppConfig = {
   maxSellersPerCart: number;
   maxPendingCarts: number;
   requireSignatures: boolean;
+  botSignatureEnforceAfter: string | null;
   allowDevStepUp: boolean;
   devTools: boolean;
   stripeSecretKey: string | null;
@@ -127,6 +128,8 @@ export function config(): AppConfig {
     maxSellersPerCart: intEnv("MAX_SELLERS_PER_CART", 5),
     maxPendingCarts: intEnv("MAX_PENDING_CARTS", 3),
     requireSignatures: process.env.MERCAVINE_REQUIRE_SIGNATURES === "true",
+    // ISO date. From then on every REST bot call must be signed and keyless legacy bots get 401.
+    botSignatureEnforceAfter: process.env.MERCAVINE_BOT_SIGNATURE_ENFORCE_AFTER?.trim() || null,
     allowDevStepUp: process.env.MERCAVINE_ALLOW_DEV_STEP_UP !== "false",
     devTools: process.env.MERCAVINE_DEV_TOOLS !== "false",
     stripeSecretKey: stripeKey,
@@ -167,7 +170,7 @@ export function config(): AppConfig {
     passkeyOrigin: process.env.PASSKEY_ORIGIN?.trim() || passkeyOrigin,
     contactName: process.env.CONTACT_NAME?.trim() || "Joe Perez",
     contactRole: process.env.CONTACT_ROLE?.trim() || "CEO",
-    contactEmail: process.env.CONTACT_EMAIL?.trim() || "mercavine-outreach@mail.grokbot.com",
+    contactEmail: process.env.CONTACT_EMAIL?.trim() || "support@mercavine.com",
     websiteUrl: process.env.WEBSITE_URL?.trim() || "",
   };
 }
