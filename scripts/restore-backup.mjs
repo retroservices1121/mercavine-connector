@@ -26,7 +26,7 @@ if (blob.subarray(0, 5).toString() !== "MVBK1") {
   console.error("Not a Mercavine backup file.");
   process.exit(1);
 }
-const decipher = createDecipheriv("aes-256-gcm", key, blob.subarray(5, 17));
+const decipher = createDecipheriv("aes-256-gcm", key, blob.subarray(5, 17), { authTagLength: 16 });
 decipher.setAuthTag(blob.subarray(17, 33));
 const plain = gunzipSync(Buffer.concat([decipher.update(blob.subarray(33)), decipher.final()]));
 writeFileSync(output, plain, { mode: 0o600 });

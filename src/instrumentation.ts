@@ -6,6 +6,8 @@ export async function register() {
     const { scheduleBackups } = await import("./lib/backup");
     getDb();
     scheduleBackups();
+    const { scheduleStoreJobs } = await import("./lib/store-jobs");
+    scheduleStoreJobs();
     setInterval(() => {
       try {
         sweepExpired();

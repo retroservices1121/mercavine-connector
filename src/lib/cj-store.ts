@@ -384,8 +384,61 @@ export async function syncTracking(): Promise<{ checked: number; shipped: number
     if (d.trackNumber && r.order_id) {
       const { markShipped } = await import("./orders");
       const o = one<{ tracking_number: string | null }>(db, `SELECT tracking_number FROM orders WHERE id = ?`, r.order_id);
-      if (!o?.tracking_number) { markShipped(r.order_id, d.logisticName || d.trackingProvider || "carrier", d.trackNumber); shipped++; }
+      if (!o?.tracking_number) {
+        const carrier = d.logisticName || d.trackingProvider || "carrier";
+        markShipped(r.order_id, carrier, d.trackNumber);
+        shipped++;
+        await notifyShipped(r.order_id, carrier, d.trackNumber, d.trackingUrl ?? null);
+      }
     }
   }
   return { checked: rows.length, shipped };
+}
+
+/** Email the buyer their tracking number. Best-effort: mail failures never block the status update. */
+export async function notifyShipped(orderId: string, carrier: string, tracking: string, url: string | null): Promise<boolean> {
+  const row = one<{ email: string }>(getDb(), `SELECT u.email FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = ?`, orderId);
+  if (!row?.email) return false;
+  const { sendMail } = await import("./mailer");
+  const safeUrl = url && /^https:\/\//i.test(url) ? url : null;
+  const text = [
+    "Your Mercavine Store order is on its way.",
+    "",
+    `Order: ${orderId}`,
+    `Carrier: ${carrier}`,
+    `Tracking number: ${tracking}`,
+    ...(safeUrl ? [`Track it: ${safeUrl}`] : []),
+    "",
+    "Questions? Reply to this email or write to support@mercavine.com.",
+  ].join("\n");
+  const r = await sendMail({ to: row.email, subject: "Your Mercavine order has shipped", text, tag: "order_shipped" });
+  return r.delivered;
+}
+
+export type ReviewOrder = {
+  id: string; status: string; created_at: string; cj_status: string | null; tracking_number: string | null; detail: string | null;
+  ship_to: string; lines: { title: string; quantity: number; unit_price_cents: number; cost_cents: number | null; freight_cents: number | null }[];
+  subtotal_cents: number; tax_cents: number; est_cost_cents: number;
+};
+/** Supplier orders with what an admin needs to decide: items, ship-to city/state, totals, and CJ cost. */
+export function supplierOrdersForReview(): ReviewOrder[] {
+  const db = getDb();
+  return many<{ id: string; cart_id: string; status: string; created_at: string; cj_status: string | null; tracking_number: string | null; detail: string | null }>(db,
+    `SELECT id, cart_id, status, created_at, cj_status, tracking_number, detail FROM supplier_orders ORDER BY (status = 'pending_approval') DESC, created_at DESC LIMIT 200`)
+    .map((so) => {
+      const addr = one<{ city: string; region: string; postal_code: string }>(db, `SELECT a.city, a.region, a.postal_code FROM carts c JOIN addresses a ON a.id = c.shipping_address_id WHERE c.id = ?`, so.cart_id);
+      const lines = many<ReviewOrder["lines"][number]>(db,
+        `SELECT l.title, l.quantity, l.unit_price_cents, sp.cost_cents, sp.freight_cents FROM cart_lines l
+         LEFT JOIN supplier_product_map m ON m.offer_id = l.offer_id LEFT JOIN supplier_products sp ON sp.pid = m.pid
+         WHERE l.cart_id = ? AND l.seller_id = ?`, so.cart_id, FIRST_PARTY_SELLER_ID);
+      const tq = one<{ tax_cents: number }>(db, `SELECT tax_cents FROM tax_quotes WHERE cart_id = ? AND seller_id = ?`, so.cart_id, FIRST_PARTY_SELLER_ID);
+      return {
+        id: so.id, status: so.status, created_at: so.created_at, cj_status: so.cj_status, tracking_number: so.tracking_number, detail: so.detail,
+        ship_to: addr ? `${addr.city}, ${addr.region} ${addr.postal_code}` : "(no address)",
+        lines,
+        subtotal_cents: lines.reduce((n, l) => n + l.unit_price_cents * l.quantity, 0),
+        tax_cents: tq?.tax_cents ?? 0,
+        est_cost_cents: lines.reduce((n, l) => n + (l.cost_cents ?? 0) * l.quantity + (l.freight_cents ?? 0), 0),
+      };
+    });
 }
