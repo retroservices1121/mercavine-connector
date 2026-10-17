@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/site-header";
 import { config } from "@/lib/config";
 import { LoginForm } from "./login-form";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; unlocked?: string }> }) {
   const params = await searchParams;
   const cfg = config();
   return (
@@ -15,6 +15,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           Sign in with your Mercavine account. Passkeys can be enrolled after sign-in.
           {cfg.brandName} does not share this session with your bot.
         </p>
+        {params.unlocked === "1" ? (
+          <p className="mt-4 rounded-2xl border border-[var(--line)] p-3 text-sm">Your account is unlocked. You can sign in now.</p>
+        ) : params.unlocked === "0" ? (
+          <p className="mt-4 rounded-2xl border border-[var(--line)] p-3 text-sm">That unlock link is invalid or expired. The lock lifts on its own after 30 minutes.</p>
+        ) : null}
         <div className="mt-6 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5">
           <LoginForm nextPath={params.next} />
         </div>

@@ -43,3 +43,20 @@ The returns policy is at `/returns`: resend or refund for damaged, defective, or
 - On admin approval, the full amount including tax is captured. Then `tax.transactions.createFromCalculation` runs with reference = order id.
 - A full `charge.refunded` triggers `tax.transactions.createReversal` with mode full. Partial refunds aren't reversed automatically.
 - Nexus and marketplace-facilitator registration is a business decision to make with an accountant.
+
+## Scheduled jobs (`src/lib/store-jobs.ts`)
+Run in-process on the single Railway instance. Off unless `MERCAVINE_STORE_ENABLED=true` and `CJ_API_KEY` is set; `STORE_JOBS_ENABLED=false` forces them off. An interval of `0` disables a job. Each run takes an in-process flag plus a lease row in `settings` (`job_lock:<name>`, 30 min TTL), so runs never overlap. Last result per job is in `settings` (`job_last:<name>`) and at `GET /api/v1/admin/jobs`.
+
+| Var | Default | Job |
+|---|---|---|
+| `CJ_SYNC_INTERVAL_MIN` | `360` | `cj-sync`: catalog import + reprice (`CJ_SYNC_MAX_NEW`, default 25 new per run) |
+| `CJ_REFRESH_INTERVAL_MIN` | `60` | `cj-refresh`: cost/stock refresh of the `CJ_REFRESH_LIMIT` (100) stalest items; pauses under the stock floor |
+| `CJ_TRACKING_INTERVAL_MIN` | `60` | `cj-tracking`: pulls CJ tracking, marks orders shipped, emails the buyer (Resend). Also `tax-commit`: retries Stripe Tax transaction records that failed after capture |
+
+Pricing rules (20% margin, $15 minimum, US-warehouse stock only) are unchanged. Any job can be run by hand: `POST /api/v1/admin/jobs/<name>` with the Bearer token.
+
+## Admin screen
+`/admin/store` (404 when `MERCAVINE_ADMIN_TOKEN` is unset). Sign in by pasting the token; it's sent in a POST body only and stored as an 8-hour `HttpOnly; Secure; SameSite=Strict` cookie. Cookie-authenticated writes require a same-origin `Origin` header. The page lists held orders with items, ship-to city/state, subtotal, tax, estimated CJ cost and margin, and has Approve / Reject. Approve still goes through `approveSupplierOrder`, so it stays dry-run unless `CJ_ORDERS_LIVE=true`.
+
+## Known gaps
+- Partial refunds don't reverse Stripe Tax automatically (full refunds do). Handle partial-refund tax in the Stripe dashboard.

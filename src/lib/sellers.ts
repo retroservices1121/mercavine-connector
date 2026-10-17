@@ -11,6 +11,8 @@ import { many, one, run } from "./sql";
 export { signupRateLimit as sellerSignupRateLimit };
 
 export const SELLER_FEE_COPY = "Mercavine takes a simple 3% fee, only when you sell. Stripe's processing fees apply.";
+/** Short help-line version of the fee note for the dashboard. */
+export const SELLER_FEE_HELP = "Fees: 3% per sale, plus Stripe's processing fees.";
 
 export const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE",
@@ -172,14 +174,14 @@ export function createSellerAccount(input: Record<string, unknown>, signedInUser
   const category = clean(input.category, 40);
   const state = clean(input.state, 2).toUpperCase();
   const description = clean(input.description, 500);
-  if (businessName.length < 2) throw new ApiError(422, "invalid_seller", "Enter your business name.");
-  if (contactName.length < 2) throw new ApiError(422, "invalid_seller", "Enter a contact name.");
-  if (!validCategory(category)) throw new ApiError(422, "invalid_seller", "Choose a product category.");
-  if (!US_STATES.includes(state)) throw new ApiError(422, "invalid_seller", "Choose your state.");
-  if (description.length < 10) throw new ApiError(422, "invalid_seller", "Tell shoppers a little about what you sell.");
-  if (website && !URL_RE.test(website)) throw new ApiError(422, "invalid_seller", "Enter a full website address, like https://example.com.");
-  if (phone && !/^[0-9+().\-\s]{7,30}$/.test(phone)) throw new ApiError(422, "invalid_seller", "Enter a valid phone number.");
-  if (input.agree_terms !== true) throw new ApiError(422, "invalid_seller", "Please agree to the seller terms.");
+  if (businessName.length < 2) throw new ApiError(422, "invalid_seller", "Enter your business name.", { field: "business_name" });
+  if (contactName.length < 2) throw new ApiError(422, "invalid_seller", "Enter a contact name.", { field: "contact_name" });
+  if (!validCategory(category)) throw new ApiError(422, "invalid_seller", "Choose a product category.", { field: "category" });
+  if (!US_STATES.includes(state)) throw new ApiError(422, "invalid_seller", "Choose your state.", { field: "state" });
+  if (description.length < 10) throw new ApiError(422, "invalid_seller", "Tell shoppers a little about what you sell.", { field: "description" });
+  if (website && !URL_RE.test(website)) throw new ApiError(422, "invalid_seller", "Enter a full website address, like https://example.com.", { field: "website" });
+  if (phone && !/^[0-9+().\-\s]{7,30}$/.test(phone)) throw new ApiError(422, "invalid_seller", "Enter a valid phone number.", { field: "phone" });
+  if (input.agree_terms !== true) throw new ApiError(422, "invalid_seller", "Please agree to the seller terms.", { field: "agree_terms" });
 
   let userId = signedInUserId;
   let email: string;
@@ -189,7 +191,7 @@ export function createSellerAccount(input: Record<string, unknown>, signedInUser
     if (!user) throw new ApiError(401, "unauthorized", "Sign in again.");
     email = user.email;
   } else {
-    const made = createUser({ email: input.contact_email, password: input.password, name: contactName });
+    const made = createUser({ email: input.contact_email, password: input.password, name: contactName, accountType: "seller" });
     userId = made.id;
     email = made.email;
     created = true;
@@ -342,6 +344,7 @@ export type SellerProduct = {
   price_cents: number;
   stock: number;
   image_url: string | null;
+  unlisted: boolean;
 };
 
 function productInput(input: Record<string, unknown>) {
@@ -352,12 +355,12 @@ function productInput(input: Record<string, unknown>) {
   const priceRaw = String(input.price ?? "").replace(/[$,\s]/g, "");
   const price = Math.round(Number(priceRaw) * 100);
   const stock = Number(input.stock);
-  if (title.length < 2) throw new ApiError(422, "invalid_product", "Enter a product name.");
-  if (description.length < 5) throw new ApiError(422, "invalid_product", "Add a short description.");
-  if (!validCategory(category)) throw new ApiError(422, "invalid_product", "Choose a category.");
-  if (!priceRaw || !Number.isFinite(price) || price < 50 || price > 10_000_000) throw new ApiError(422, "invalid_product", "Enter a price between $0.50 and $100,000.");
-  if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) throw new ApiError(422, "invalid_product", "Enter how many you have in stock.");
-  if (imageUrl && !/^https:\/\/[^\s]+$/i.test(imageUrl)) throw new ApiError(422, "invalid_product", "Image links must start with https://.");
+  if (title.length < 2) throw new ApiError(422, "invalid_product", "Enter a product name.", { field: "title" });
+  if (description.length < 5) throw new ApiError(422, "invalid_product", "Add a short description.", { field: "description" });
+  if (!validCategory(category)) throw new ApiError(422, "invalid_product", "Choose a category.", { field: "category" });
+  if (!priceRaw || !Number.isFinite(price) || price < 50 || price > 10_000_000) throw new ApiError(422, "invalid_product", "Enter a price between $0.50 and $100,000.", { field: "price" });
+  if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) throw new ApiError(422, "invalid_product", "Enter how many you have in stock.", { field: "stock" });
+  if (imageUrl && !/^https:\/\/[^\s]+$/i.test(imageUrl)) throw new ApiError(422, "invalid_product", "Image links must start with https://.", { field: "image_url" });
   return { title, description, category, imageUrl, price, stock };
 }
 
@@ -365,10 +368,10 @@ export function listSellerProducts(userId: string): SellerProduct[] {
   const seller = requireSeller(userId);
   return many<SellerProduct>(
     getDb(),
-    `SELECT p.id AS product_id, o.id AS offer_id, p.title, p.description, p.category, o.price_cents, o.stock, p.image_url
+    `SELECT p.id AS product_id, o.id AS offer_id, p.title, p.description, p.category, o.price_cents, o.stock, p.image_url, p.unlisted
      FROM products p JOIN offers o ON o.product_id = p.id WHERE p.seller_id = ? ORDER BY p.created_at DESC`,
     seller.id,
-  ).map((row) => ({ ...row }));
+  ).map((row) => ({ ...row, unlisted: Boolean((row as unknown as { unlisted: number }).unlisted) }));
 }
 
 export function createSellerProduct(userId: string, input: Record<string, unknown>): SellerProduct {
@@ -401,4 +404,64 @@ export function updateSellerProduct(userId: string, productId: string, input: Re
     run(db, `UPDATE offers SET price_cents = ?, stock = ? WHERE product_id = ? AND seller_id = ?`, v.price, v.stock, productId, seller.id);
   });
   return listSellerProducts(userId).find((p) => p.product_id === productId)!;
+}
+
+/**
+ * Remove a product. Owner only (404 for anyone else, same as a missing product).
+ * If any cart or order line points at it, it is unlisted instead (kept for order history); otherwise it is deleted.
+ */
+export function removeSellerProduct(userId: string, productId: string): { product_id: string; result: "deleted" | "unlisted" } {
+  const seller = requireSeller(userId);
+  return transaction((db) => {
+    const owned = one<{ id: string }>(db, `SELECT id FROM products WHERE id = ? AND seller_id = ?`, productId, seller.id);
+    if (!owned) throw new ApiError(404, "not_found", "Product not found.");
+    const referenced = one(db, `SELECT 1 FROM cart_lines l JOIN offers o ON o.id = l.offer_id WHERE o.product_id = ? LIMIT 1`, productId);
+    if (referenced) {
+      run(db, `UPDATE products SET unlisted = 1 WHERE id = ? AND seller_id = ?`, productId, seller.id);
+      return { product_id: productId, result: "unlisted" as const };
+    }
+    run(db, `DELETE FROM inventory_reservations WHERE offer_id IN (SELECT id FROM offers WHERE product_id = ?)`, productId);
+    run(db, `DELETE FROM offers WHERE product_id = ? AND seller_id = ?`, productId, seller.id);
+    run(db, `DELETE FROM products WHERE id = ? AND seller_id = ?`, productId, seller.id);
+    return { product_id: productId, result: "deleted" as const };
+  });
+}
+
+/** Put an unlisted product back on sale. Owner only. */
+export function relistSellerProduct(userId: string, productId: string): SellerProduct {
+  const seller = requireSeller(userId);
+  const owned = one<{ id: string }>(getDb(), `SELECT id FROM products WHERE id = ? AND seller_id = ?`, productId, seller.id);
+  if (!owned) throw new ApiError(404, "not_found", "Product not found.");
+  run(getDb(), `UPDATE products SET unlisted = 0 WHERE id = ? AND seller_id = ?`, productId, seller.id);
+  return listSellerProducts(userId).find((p) => p.product_id === productId)!;
+}
+
+export type SellerOrder = {
+  order_id: string;
+  created_at: string;
+  status: string;
+  total_cents: number;
+  items: { title: string; quantity: number }[];
+  ship_to: { city: string; region: string } | null;
+};
+
+/** Orders placed with this seller. Buyer details are limited to ship-to city and state: no name, email, or street. */
+export function listSellerOrders(userId: string, limit = 50): SellerOrder[] {
+  const seller = requireSeller(userId);
+  const db = getDb();
+  const orders = many<{ id: string; created_at: string; status: string; total_cents: number; city: string | null; region: string | null }>(
+    db,
+    `SELECT o.id, o.created_at, o.status, o.total_cents, a.city, a.region
+     FROM orders o LEFT JOIN carts c ON c.id = o.cart_id LEFT JOIN addresses a ON a.id = c.shipping_address_id
+     WHERE o.seller_id = ? ORDER BY o.created_at DESC LIMIT ?`,
+    seller.id, limit,
+  );
+  return orders.map((o) => ({
+    order_id: o.id,
+    created_at: o.created_at,
+    status: o.status,
+    total_cents: o.total_cents,
+    items: many<{ title: string; quantity: number }>(db, `SELECT title, quantity FROM order_lines WHERE order_id = ? ORDER BY id`, o.id).map((l) => ({ ...l })),
+    ship_to: o.city && o.region ? { city: o.city, region: o.region } : null,
+  }));
 }

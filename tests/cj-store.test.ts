@@ -154,6 +154,8 @@ describe("Mercavine Store (CJdropshipping)", () => {
     cj.state.track = "9400TRACK";
     expect(await syncTracking()).toMatchObject({ shipped: 1 });
     expect(getDb().prepare(`SELECT status, tracking_number FROM orders WHERE cart_id = ?`).get(cartId)).toMatchObject({ status: "shipped", tracking_number: "9400TRACK" });
+    const { mailOutbox } = await import("../src/lib/mailer");
+    expect(mailOutbox().some((m) => m.tag === "order_shipped" && m.text.includes("9400TRACK"))).toBe(true);
   });
 
   it("reject voids the authorization and never orders", async () => {
