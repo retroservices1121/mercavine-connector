@@ -13,6 +13,7 @@ export type BotRecord = {
   user_id: string;
   name: string;
   public_key_pem: string | null;
+  mcp_only: boolean;
   scopes: string[];
   per_order_limit_cents: number;
   per_day_limit_cents: number;
@@ -22,7 +23,7 @@ export type BotRecord = {
   revoked_at: string | null;
 };
 
-type BotRow = Omit<BotRecord, "scopes" | "allowed_categories"> & { scopes: string; allowed_categories: string };
+type BotRow = Omit<BotRecord, "scopes" | "allowed_categories" | "mcp_only"> & { scopes: string; allowed_categories: string; mcp_only: number };
 
 const buckets = new Map<string, { tokens: number; reset: number }>();
 
@@ -46,17 +47,23 @@ export function resetRateLimits() {
 }
 
 function mapBot(row: BotRow): BotRecord {
-  return { ...row, scopes: JSON.parse(row.scopes) as string[], allowed_categories: JSON.parse(row.allowed_categories) as string[] };
+  return { ...row, mcp_only: Boolean(row.mcp_only), scopes: JSON.parse(row.scopes) as string[], allowed_categories: JSON.parse(row.allowed_categories) as string[] };
 }
 
 export function botByToken(token: string, db: DatabaseSync = getDb()): BotRecord | undefined {
-  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE token_hash = ?`, sha256(token));
+  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, mcp_only, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE token_hash = ?`, sha256(token));
   return row ? mapBot(row) : undefined;
 }
 
 export function botById(id: string, db: DatabaseSync = getDb()): BotRecord | undefined {
-  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE id = ?`, id);
+  const row = one<BotRow>(db, `SELECT id, user_id, name, public_key_pem, mcp_only, scopes, per_order_limit_cents, per_day_limit_cents, per_month_limit_cents, approval_threshold_cents, allowed_categories, revoked_at FROM bots WHERE id = ?`, id);
   return row ? mapBot(row) : undefined;
+}
+
+export function botSignaturesEnforced(): boolean {
+  const cfg = config();
+  if (cfg.requireSignatures) return true;
+  return Boolean(cfg.botSignatureEnforceAfter && nowIso() >= new Date(cfg.botSignatureEnforceAfter).toISOString());
 }
 
 export async function requireBot(req: Request, rawBody: string, scope: string): Promise<BotRecord> {
@@ -70,8 +77,19 @@ export async function requireBot(req: Request, rawBody: string, scope: string): 
     throw new ApiError(403, "scope_missing", `This bot is missing the ${scope} scope.`, { scope });
   }
   rateLimit(bot.id);
+  // REST bot-connection path only. /mcp authenticates with botByToken and is never signature-gated here.
+  if (bot.mcp_only) {
+    throw new ApiError(401, "mcp_only_connection", "This bot connection is MCP-only. Use /mcp, or connect a bot with a signing key for the REST API.");
+  }
   const hasSignature = Boolean(req.headers.get("signature") || req.headers.get("signature-input"));
-  if (config().requireSignatures || hasSignature) await verifyBotSignature(req, rawBody, bot);
+  if (botSignaturesEnforced()) {
+    if (!bot.public_key_pem) {
+      throw new ApiError(401, "signature_key_missing", "This bot has no signing key. Add an Ed25519 public key in Connect your bot.");
+    }
+    await verifyBotSignature(req, rawBody, bot);
+  } else if (hasSignature) {
+    await verifyBotSignature(req, rawBody, bot);
+  }
   return bot;
 }
 

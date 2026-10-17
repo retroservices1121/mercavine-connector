@@ -1,3 +1,4 @@
+import { DEV_BOT_PUBLIC_KEY } from "@/lib/dev-keys";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetSignupRateLimits, SIGNUP_LIMIT_PER_HOUR } from "../src/lib/accounts";
 import { handleApi } from "../src/lib/api";
@@ -86,7 +87,7 @@ describe("accounts", () => {
     expect((await post("/api/v1/bots", { name: "x" })).status).toBe(401);
     expect((await post("/api/v1/bots", { scopes: ["admin"] }, { cookie })).status).toBe(422);
 
-    const res = await post("/api/v1/bots", { name: "Grok", scopes: ["shop", "checkout"], per_month_limit_cents: 50_000 }, { cookie });
+    const res = await post("/api/v1/bots", { name: "Grok", scopes: ["shop", "checkout"], per_month_limit_cents: 50_000, public_key_pem: DEV_BOT_PUBLIC_KEY }, { cookie });
     expect(res.status).toBe(201);
     const bot = (await res.json()) as { id: string; token: string; scopes: string[]; per_month_limit_cents: number };
     expect(bot.token).toMatch(/^mv_bot_/);
