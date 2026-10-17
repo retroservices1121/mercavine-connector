@@ -41,6 +41,8 @@ describe("account deletion", () => {
 
     // not yet due
     expect(runPrivacyPurge().users).toBe(0);
+    setNow(new Date(Date.now() + (PURGE_AFTER_DAYS - 0.01) * 86_400_000));
+    expect(runPrivacyPurge().users).toBe(0);
     setNow(new Date(Date.now() + (PURGE_AFTER_DAYS + 0.01) * 86_400_000));
     expect(runPrivacyPurge().users).toBe(1);
     const user = getDb().prepare(`SELECT email, name, password_hash, deleted_at FROM users WHERE id = ?`).get(id) as Record<string, string>;

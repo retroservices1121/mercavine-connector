@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { audit } from "./audit";
-import { addDays, now, nowIso } from "./clock";
+import { addHours, now, nowIso } from "./clock";
 import { getDb, transaction } from "./db";
 import { ApiError } from "./errors";
 import { sendMail } from "./mailer";
@@ -47,7 +47,7 @@ export async function requestAccountDeletion(userId: string, password: string): 
     run(db, `UPDATE bots SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ?`, at, userId);
     run(db, `UPDATE oauth_tokens SET revoked_at = COALESCE(revoked_at, ?) WHERE bot_id IN (SELECT id FROM bots WHERE user_id = ?)`, at, userId);
     audit(db, { actorType: "human", actorId: userId, action: "account.deletion_requested", resourceType: "user", resourceId: userId });
-    return { email: user.email, purgeAfter: addDays(now(), PURGE_AFTER_DAYS) };
+    return { email: user.email, purgeAfter: addHours(now(), PURGE_AFTER_DAYS * 24) };
   });
   await sendMail({
     to: email,
@@ -90,7 +90,7 @@ function purgeUser(db: DatabaseSync, userId: string): void {
 /** Expired credentials and one-time tokens are useless and are deleted. */
 function purgeExpiredTokens(db: DatabaseSync): Record<string, number> {
   const at = nowIso();
-  const cutoff = addDays(now(), -1);
+  const cutoff = addHours(now(), -24);
   const out: Record<string, number> = {};
   const del = (table: string, where: string, ...args: string[]) => {
     out[table] = Number(db.prepare(`DELETE FROM ${table} WHERE ${where}`).run(...args).changes);
@@ -105,7 +105,7 @@ function purgeExpiredTokens(db: DatabaseSync): Record<string, number> {
 }
 
 export function runPrivacyPurge(db: DatabaseSync = getDb()): { users: number; expired: Record<string, number> } {
-  const due = addDays(now(), -PURGE_AFTER_DAYS);
+  const due = addHours(now(), -PURGE_AFTER_DAYS * 24);
   db.exec("BEGIN IMMEDIATE");
   try {
     const users = many<{ id: string }>(
