@@ -1,3 +1,4 @@
+import { openToken, sealToken } from "./token-crypto";
 import { config } from "./config";
 import { nowIso } from "./clock";
 import { getDb } from "./db";
@@ -69,7 +70,7 @@ export function shopPayRuntime(userId?: string): "off" | "mock" | "live" {
 
 function buyerToken(userId: string): string | null {
   const row = one<{ access_token: string | null }>(getDb(), `SELECT access_token FROM shop_links WHERE user_id = ? AND status = 'linked'`, userId);
-  return row?.access_token || null;
+  return openToken(row?.access_token) || null;
 }
 
 function tokenFor(userId: string): string | null {
@@ -130,18 +131,19 @@ export async function startShopLink(userId: string, deviceName: string) {
   const payload = (await response.json()) as { device_code?: string; user_code?: string; verification_uri?: string; verification_uri_complete?: string };
   if (!payload.device_code || !payload.user_code) throw new ApiError(502, "shop_signin_failed", "Shop did not return a sign-in code.");
   const uri = payload.verification_uri_complete || payload.verification_uri || "";
+  const sealedDevice = sealToken(payload.device_code);
   run(
     getDb(),
     `INSERT INTO shop_links (user_id, status, device_code, user_code, verification_uri, access_token, shop_email, shop_name, expires_at, created_at, updated_at)
      VALUES (?, 'pending', ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET status = 'pending', device_code = ?, user_code = ?, verification_uri = ?, access_token = NULL, updated_at = ?`,
     userId,
-    payload.device_code,
+    sealedDevice,
     payload.user_code,
     uri,
     at,
     at,
-    payload.device_code,
+    sealedDevice,
     payload.user_code,
     uri,
     at,
@@ -167,7 +169,7 @@ export async function pollShopLink(userId: string) {
   const body = new URLSearchParams({
     grant_type: "urn:ietf:params:oauth:grant-type:device_code",
     client_id: SHOP_OAUTH.clientId,
-    device_code: row.device_code,
+    device_code: openToken(row.device_code) ?? "",
   });
   const response = await fetch(SHOP_OAUTH.tokenEndpoint, {
     method: "POST",
@@ -185,7 +187,7 @@ export async function pollShopLink(userId: string) {
   run(
     getDb(),
     `UPDATE shop_links SET status = 'linked', device_code = NULL, access_token = ?, updated_at = ? WHERE user_id = ?`,
-    payload.access_token,
+    sealToken(payload.access_token),
     nowIso(),
     userId,
   );

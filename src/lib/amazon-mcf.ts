@@ -1,8 +1,9 @@
+import { openToken, sealToken } from "./token-crypto";
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { addDays, now, nowIso } from "./clock";
 import { config } from "./config";
-import { transaction } from "./db";
+import { getDb, transaction } from "./db";
 import { ApiError } from "./errors";
 import { newId, randomToken } from "./ids";
 import { assertBotSafe } from "./redact";
@@ -99,6 +100,7 @@ function rememberLink(
 ): void {
   const cfg = config();
   const at = nowIso();
+  const sealedRefresh = sealToken(fields.refreshToken);
   const existing = one<{ seller_id: string }>(db, `SELECT seller_id FROM amazon_seller_links WHERE seller_id = ?`, sellerId);
   if (!existing) {
     run(
@@ -109,7 +111,7 @@ function rememberLink(
       sellerId,
       fields.status,
       fields.sellingPartnerId,
-      fields.refreshToken,
+      sealedRefresh,
       cfg.amazonMarketplaceId,
       fields.oauthState,
       at,
@@ -124,7 +126,7 @@ function rememberLink(
      WHERE seller_id = ?`,
     fields.status,
     fields.sellingPartnerId,
-    fields.refreshToken,
+    sealedRefresh,
     cfg.amazonMarketplaceId,
     fields.oauthState,
     at,
@@ -367,3 +369,9 @@ export function fulfillNativeOrder(
 }
 
 export { SIGNING_NOTE };
+
+/** Decrypted LWA refresh token for a connected seller, for live SP-API calls. */
+export function amazonRefreshToken(sellerId: string): string | null {
+  const row = one<{ refresh_token: string | null }>(getDb(), `SELECT refresh_token FROM amazon_seller_links WHERE seller_id = ?`, sellerId);
+  return openToken(row?.refresh_token);
+}
