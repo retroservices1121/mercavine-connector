@@ -4,7 +4,7 @@ Bot-first marketplace connector. A shopper's agent searches the catalog and buil
 
 The connector is free. The platform fee is **3%** of each seller charge (`PLATFORM_FEE_BPS=300`), collected as Stripe `application_fee_amount` before the seller's payout. It is not added to the shopper total. A $100.00 charge carries a $3.00 fee.
 
-Contact: Joe Perez, CEO, mercavine-outreach@mail.grokbot.com. Website: https://mercavine.com (MCP at https://mercavine.com/mcp, privacy at https://mercavine.com/privacy).
+Contact: Joe Perez, CEO, support@mercavine.com. Website: https://mercavine.com (MCP at https://mercavine.com/mcp, privacy at https://mercavine.com/privacy).
 
 ## Run
 
