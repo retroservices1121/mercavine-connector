@@ -1,3 +1,4 @@
+import { requestAccountDeletion } from "./account-deletion";
 import { forgotPassword, isEmailVerified, resendVerification, resetPassword, sendVerification } from "./email-auth";
 import { createAddress, createBot, createUser, deleteAddress, listAddresses, listBots, signupRateLimit, updateAddress } from "./accounts";
 import { applyStripeAccountState, assertSellerAccess, createSellerAccount, createSellerProduct, listSellerProducts, refreshStripeStatus, sellerDashboard, sellerSignupRateLimit, startStripeOnboarding, updateSellerProduct } from "./sellers";
@@ -117,6 +118,13 @@ async function route(req: Request, url: URL, parts: string[]): Promise<Response>
     const token = readCookie(req, "mv_session");
     if (token) logout(token);
     return cors(204, null, { "set-cookie": clearSessionCookie() });
+  }
+  if (parts[0] === "me" && parts[1] === "delete" && method === "POST") {
+    assertSameOrigin(req);
+    const user = requireUser(req);
+    const { json } = await readJson(req);
+    const result = await requestAccountDeletion(user.id, String(json.password ?? ""));
+    return cors(202, { ok: true, ...result }, { "set-cookie": clearSessionCookie() });
   }
   if (parts[0] === "me" && method === "GET") {
     const user = requireUser(req);

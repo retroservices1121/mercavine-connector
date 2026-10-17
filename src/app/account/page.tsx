@@ -11,6 +11,7 @@ import { getDb } from "@/lib/db";
 import { feePercentLabel, formatUsd } from "@/lib/money";
 import { shopLinkPublic } from "@/lib/shop-pay";
 import { AccountActions } from "./account-actions";
+import { DeleteAccount } from "./delete-account";
 import { ShopLinkPanel } from "./shop-link-panel";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,10 @@ export default async function AccountPage() {
             </li>
           ))}
         </ul>
+        <h2 className="mt-10 text-2xl">Delete account</h2>
+        <div className="mt-3">
+          <DeleteAccount />
+        </div>
       </section>
     </main>
   );

@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "./config";
+import { ensureDeletionSchema } from "./account-deletion";
 import { purgeDemoIdentities, seedIfEmpty } from "./seed";
 
 type Cache = { db: DatabaseSync; path: string };
@@ -491,6 +492,7 @@ CREATE INDEX IF NOT EXISTS oauth_tokens_bot ON oauth_tokens(bot_id);
 `;
 
 function migrate(db: DatabaseSync): void {
+  ensureDeletionSchema(db);
   // 1 = MCP-only connection (OAuth connectors such as Grok), never used on the signed REST path.
   addColumn(db, "bots", "mcp_only", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "orders", "payment_provider", "TEXT NOT NULL DEFAULT 'stripe'");
