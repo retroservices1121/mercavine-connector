@@ -1,3 +1,4 @@
+import { buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -24,7 +25,7 @@ export default async function AddressesPage({ searchParams }: { searchParams: Pr
     <main>
       <SiteHeader signedIn />
       <section className="mx-auto max-w-3xl px-5 py-8">
-        <p className="text-sm"><Link href="/account" className="underline">← Account</Link></p>
+        <p><Link href="/account" className={buttonVariants({ variant: "outline", className: "h-9 px-4" })}>Back</Link></p>
         <h1 className="mt-2 text-4xl">Shipping addresses</h1>
         {isEmailVerified(user.id) ? null : <VerifyBanner email={user.email} />}
         <div className="mt-6"><AddressManager addresses={addresses} onboarding={onboarding} /></div>

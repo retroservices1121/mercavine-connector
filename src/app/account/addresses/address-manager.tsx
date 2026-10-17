@@ -8,14 +8,14 @@ import { Label } from "@/components/ui/label";
 import type { Address } from "@/lib/accounts";
 import { ONBOARDING_DONE_PATH } from "@/lib/onboarding";
 
-const FIELDS: [keyof Address, string, boolean][] = [
-  ["label", "Label", false],
-  ["recipient", "Recipient", true],
-  ["line1", "Street address", true],
-  ["line2", "Apt, suite (optional)", false],
-  ["city", "City", true],
-  ["region", "State", true],
-  ["postal_code", "ZIP", true],
+const FIELDS: [keyof Address, string, boolean, string][] = [
+  ["label", "Label", false, "Home"],
+  ["recipient", "Recipient", true, "Jane Smith"],
+  ["line1", "Street address", true, "123 Main St"],
+  ["line2", "Apt, suite (optional)", false, "Apt 4B"],
+  ["city", "City", true, "Springfield"],
+  ["region", "State", true, "IL"],
+  ["postal_code", "ZIP", true, "62701"],
 ];
 
 export function AddressManager({ addresses, onboarding = false }: { addresses: Address[]; onboarding?: boolean }) {
@@ -63,15 +63,15 @@ export function AddressManager({ addresses, onboarding = false }: { addresses: A
           setSaving(true);
           const ok = await call("/api/v1/addresses", "POST", body);
           setSaving(false);
-          if (ok && onboarding) router.push(ONBOARDING_DONE_PATH);
+          if (ok) router.push(onboarding ? ONBOARDING_DONE_PATH : "/account");
         }}
         className="space-y-3 rounded-3xl border border-[var(--line)] bg-[var(--card)] p-5"
       >
         <h2 className="text-xl">Add an address</h2>
-        {FIELDS.map(([k, label, required]) => (
+        {FIELDS.map(([k, label, required, placeholder]) => (
           <div key={k} className="space-y-1">
             <Label htmlFor={k}>{label}</Label>
-            <Input id={k} name={k} required={required} />
+            <Input id={k} name={k} required={required} placeholder={placeholder} />
           </div>
         ))}
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_default" /> Make this my default</label>
