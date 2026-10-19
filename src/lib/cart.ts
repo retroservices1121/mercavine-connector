@@ -1,3 +1,4 @@
+import { securityAlert } from "./monitoring";
 import { assertEmailVerified } from "./email-auth";
 import { sellerVisibleSql } from "./catalog";
 import type { DatabaseSync } from "node:sqlite";
@@ -1297,6 +1298,7 @@ export function noteFailedApprovalLogin(nextPath: string | null) {
     const fails = token.failed_auth + 1;
     if (fails >= 5) {
       run(db, `UPDATE approval_tokens SET failed_auth = ?, revoked_at = ? WHERE id = ?`, fails, nowIso(), token.id);
+      securityAlert("approval_security_hold", { cart_id: token.cart_id, failures: fails });
       const cart = mustCart(db, token.cart_id);
       if (cart.status === "pending_approval" || cart.status === "draft") {
         transition(db, cart.id, "cancel", { status_reason: "security_hold" });
