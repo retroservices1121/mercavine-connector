@@ -10,6 +10,7 @@ import { config } from "./config";
 import { ApiError, errorBody } from "./errors";
 import { cancelOrder, getOrder, listOrders, requestReturn } from "./orders";
 import { lookupProduct, searchAcross } from "./search";
+import { getWhopProduct, searchWhopProducts } from "./whop";
 import { shopLinkPublic, startShopLink, stripClientShopLine, verifyShopLines } from "./shop-pay";
 
 function header(extra: RequestHandlerExtra<ServerRequest, ServerNotification>, name: string): string {
@@ -59,6 +60,7 @@ export function createMcpServer() {
         "Shop catalog results use source shop. Do not cache them and do not download merchant images; show the source URL.",
         "Shop Pay, when enabled, still needs the human's Mercavine approval and a separate Shop Pay approval. Show shop_pay.continue_url. The 3% fee does not apply to Shop Pay orders.",
         `The platform fee is ${cfg.platformFeeBps / 100}% of each Mercavine seller charge and is paid by the seller, not added to the shopper total.`,
+        "Whop results (search_whop_products, get_whop_product) are digital products sold and fulfilled by Whop sellers, not Mercavine. Tell the shopper that, show the Whop link unchanged, and always show its disclosure next to it. The buyer pays on Whop with their own Whop account; never add Whop items to a Mercavine cart and never complete a Whop checkout yourself.",
         "Mutating tools require idempotency_key.",
       ].join(" "),
     },
@@ -105,6 +107,40 @@ export function createMcpServer() {
         const product = await lookupProduct(args.product_id, args.source);
         if (!product) throw new ApiError(404, "not_found", "Product not found.");
         return product;
+      }),
+  );
+
+  server.registerTool(
+    "search_whop_products",
+    {
+      title: "Search Whop products",
+      description: "Search Whop's public marketplace of digital products (courses, communities, software, memberships) via Whop's official API. Results are Whop products that Mercavine does not sell or fulfill. Each result has a Whop product page and checkout link with Mercavine's affiliate attribution; show the disclosure next to every link. Returns configured:false when Whop is not set up.",
+      inputSchema: {
+        query: z.string().min(1).describe("What the shopper wants, for example options trading course"),
+        max_price: z.number().int().optional().describe("Maximum price in cents"),
+        plan_type: z.enum(["one_time", "renewal"]).optional().describe("one_time purchase or renewal subscription"),
+        category: z.string().optional().describe("Whop marketplace category route, for example trading"),
+        limit: z.number().int().min(1).max(10).optional(),
+      },
+    },
+    async (args, extra) =>
+      tool(async () => {
+        botFromExtra(extra, "search");
+        return searchWhopProducts({ query: args.query, maxPriceCents: args.max_price, planType: args.plan_type, category: args.category, limit: args.limit });
+      }),
+  );
+
+  server.registerTool(
+    "get_whop_product",
+    {
+      title: "Get a Whop product",
+      description: "Fetch one Whop product (id whop:prod_...) with its variants and affiliate checkout links. Mercavine does not sell or fulfill it; the buyer pays on Whop's checkout with their own Whop account. Show the disclosure next to every link.",
+      inputSchema: { product_id: z.string().describe("Whop id from search_whop_products, like whop:prod_xxx") },
+    },
+    async (args, extra) =>
+      tool(async () => {
+        botFromExtra(extra, "search");
+        return getWhopProduct(args.product_id);
       }),
   );
 
