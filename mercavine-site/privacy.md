@@ -243,4 +243,3 @@ Attn: Privacy
 North Carolina, USA *[mailing address to be added]*  
 Email: **privacy@mercavine.com** *(placeholder — to be confirmed)*
 
-Joe Perez, CEO

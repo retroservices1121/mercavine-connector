@@ -1,14 +1,16 @@
 {
   "name": "mercavine",
   "displayName": "Mercavine",
-  "version": "0.1.0",
-  "description": "Free shopping connector. The agent searches and builds a cart. The human approves payment. Sellers pay a 3% application fee on their own Stripe charge. Shop Pay orders do not carry that fee.",
+  "version": "0.1.1",
+  "description": "Free shopping connector. The agent searches and builds a cart. The human approves payment on a Mercavine page. Shoppers pay nothing extra; sellers pay a 3% application fee on their own Stripe charge. Shop Pay orders do not carry that fee.",
   "author": {
-    "name": "Joe Perez",
-    "email": "mercavine-outreach@mail.grokbot.com"
+    "name": "Mobi Media Inc.",
+    "email": "support@mercavine.com"
   },
+  "homepage": "https://mercavine.com",
+  "repository": "https://github.com/retroservices1121/mercavine-connector",
   "license": "MIT",
-  "logo": "assets/logo.svg",
+  "logo": "assets/logo-1024.png",
   "keywords": ["shopping", "checkout", "mcp", "mercavine"],
   "skills": "./skills",
   "mcpServers": "./mcp.json"

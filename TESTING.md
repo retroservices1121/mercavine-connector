@@ -72,11 +72,21 @@ Submit that cart, open the approval URL, and choose **Approve for Shop Pay**. Th
 
 Passkeys: after sign-in, **Enroll a passkey** on `/account`. Later approvals prompt for it. Dev step-up is skipped once a passkey exists.
 
-Contact for this listing: Joe Perez, CEO, mercavine-outreach@mail.grokbot.com. There is no website URL yet.
+Contact for this listing: Mobi Media Inc. (operator of Mercavine), support@mercavine.com. Website: https://mercavine.com.
 
-## Production review flow (no demo data)
+## Hosted review flow (https://mercavine.com)
 
-1. Open https://mercavine.com/signup (or the Railway URL until the custom domain is attached) and create an account. Password: at least 10 characters. You are signed in right away. Email verification is not implemented yet.
-2. Add a shipping address at `/account/addresses`. Checkout uses the default address and returns `address_required` without one.
-3. Connect a bot at `/account/bots`. Pick scopes (`shop`, `checkout`, `track`), optional limits, and an optional Ed25519 public key. Copy the token; it is shown once.
-4. Point the bot at `https://mercavine.com/mcp` with `Authorization: Bearer <token>`. `get_order_status` and `list_orders` need the `track` scope.
+The hosted site runs real Stripe in live mode. **Any card entered on an approval page is charged for real, so reviewers should stop at the approval page and not enter a card.** Nothing is charged, and no supplier order is created, unless a card is submitted. Even then, supplier (CJ) orders are held for an admin and run as a dry run (`CJ_ORDERS_LIVE` is off), so no real supplier order is placed. To exercise the full approve-and-pay path without any real money, use the local mock-mode path above (steps 1-6 of the manual path, `npm run dev`).
+
+Reviewer steps, from a fresh account:
+
+1. In Grok Bot (Connect apps) or Cursor (plugin install), add Mercavine. The client uses the server URL `https://mercavine.com/mcp`, receives a `401` with OAuth metadata, registers itself, and opens the Mercavine sign-in page.
+2. Sign in, or create a shopper account at https://mercavine.com/signup (any email you control, password of at least 10 characters). Open the verification link emailed to you; checkout returns `email_unverified` until you do.
+3. Add a shipping address at https://mercavine.com/account/addresses (checkout returns `address_required` without one).
+4. On the consent page, review the scopes (`shop`, `checkout`, `track`) and approve. You are sent back to the client, which now holds an OAuth access token (1 hour, refreshed automatically).
+5. Ask the bot to search, for example "search Mercavine for phone accessories" or "tools". It calls `search_products` and returns offers with prices, sellers and shipping.
+6. Ask the bot to add one offer to a cart and request checkout. It calls `create_cart` and `request_checkout`, and returns a single-use approval link that is shown to you. The bot never asks for a card and cannot complete payment.
+7. Open the approval link while signed in. Confirm it lists the item, the shipping address, tax and the total. Stop here. You can press **Decline**, which tells the bot and releases the reservation.
+8. Back in the client, ask for the cart or order status (`get_cart`, `list_orders`, `get_order_status`). A declined cart reports `declined`. To undo access, revoke the connection in your client or at https://mercavine.com/account/bots.
+
+A static-token alternative to OAuth: create a bot token at `/account/bots` and send it as `Authorization: Bearer <token>` to `https://mercavine.com/mcp`.

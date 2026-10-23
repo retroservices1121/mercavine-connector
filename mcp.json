@@ -1,10 +1,7 @@
 {
   "mcpServers": {
     "mercavine": {
-      "url": "https://mercavine.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${MERCAVINE_BOT_TOKEN}"
-      }
+      "url": "https://mercavine.com/mcp"
     }
   }
 }
