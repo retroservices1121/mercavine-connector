@@ -2,13 +2,13 @@
 
 This folder is a filled-out draft for the xAI Grok Bot marketplace form (and the Cursor listing that shares the plugin). **It has not been submitted.**
 
-Contact: Joe Perez, CEO, support@mercavine.com. Website: https://mercavine.com. Privacy: https://mercavine.com/privacy. Terms: https://mercavine.com/terms.
+Operated by Mobi Media Inc. Contact: support@mercavine.com. Website: https://mercavine.com. Privacy: https://mercavine.com/privacy. Terms: https://mercavine.com/terms.
 
-The logotype file is `logo.svg` (also served at `/logo.svg`). It is a 1:1 SVG on a green background plate.
+The logotype to submit is `assets/logo-1024.png` (also served at `https://mercavine.com/logo-1024.png`): a 1024x1024 PNG, 1:1, on a fully opaque green plate with no transparent corners. `assets/logo-square.svg` is the matching SVG. The older `logo.svg` has rounded, transparent corners.
 
 MCP URL: `https://mercavine.com/mcp` (locally `http://127.0.0.1:4317/mcp`).
 
-Auth: every MCP and bot API call sends `Authorization: Bearer <bot token>`. A shopper signs up at `/signup`, then creates a token at `/account/bots` (shown once, stored as SHA-256 only) and picks scopes:
+Auth: OAuth 2.1 (discovery, dynamic client registration, PKCE S256, consent page), so clients only need the server URL. A static bot token is also supported: a shopper signs up at `/signup`, then creates a token at `/account/bots` (shown once, stored as SHA-256 only) and sends it as `Authorization: Bearer <bot token>`. Scopes:
 
 | Scope group | API scopes | Allows |
 | --- | --- | --- |
@@ -23,3 +23,5 @@ Domain note: mercavine.com DNS CNAMEs to Railway. If the custom domain is not ye
 The platform fee in every field is 3% (`PLATFORM_FEE_BPS=300`). The connector is free.
 
 `shopify-checkout-permission-request.md` is a draft to Shopify support. It has not been sent.
+
+The ready-to-paste form text is in [../docs/marketplace-submission.md](../docs/marketplace-submission.md).

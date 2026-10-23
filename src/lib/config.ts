@@ -168,8 +168,8 @@ export function config(): AppConfig {
     amazonMarketplaceId: process.env.AMAZON_MARKETPLACE_ID?.trim() || "ATVPDKIKX0DER",
     passkeyRpId: process.env.PASSKEY_RP_ID?.trim() || passkeyRpId,
     passkeyOrigin: process.env.PASSKEY_ORIGIN?.trim() || passkeyOrigin,
-    contactName: process.env.CONTACT_NAME?.trim() || "Joe Perez",
-    contactRole: process.env.CONTACT_ROLE?.trim() || "CEO",
+    contactName: process.env.CONTACT_NAME?.trim() || "Mobi Media Inc.",
+    contactRole: process.env.CONTACT_ROLE?.trim() || "Operator of Mercavine",
     contactEmail: process.env.CONTACT_EMAIL?.trim() || "support@mercavine.com",
     websiteUrl: process.env.WEBSITE_URL?.trim() || "",
   };

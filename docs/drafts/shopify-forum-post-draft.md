@@ -13,5 +13,4 @@ I've read that direct completion is granted case by case and that there's no pub
 
 Thanks for any guidance. You can reply here or at mercavine-outreach@mail.grokbot.com.
 
-Joe Perez
-CEO, Mercavine
+Mercavine, operated by Mobi Media Inc.

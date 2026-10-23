@@ -1,7 +1,7 @@
 # Draft — not sent
 
 To: Shopify support / Catalog and UCP access
-From: Joe Perez, CEO, Mercavine
+From: Mercavine (operated by Mobi Media Inc.)
 Email: mercavine-outreach@mail.grokbot.com
 
 Subject: Request complete_checkout permission for the Mercavine agent connector
@@ -19,5 +19,4 @@ The connector is free to users. Our own sellers, separate from Shopify, pay a 3%
 Our site is https://mercavine.com (privacy policy at https://mercavine.com/privacy). Please reply to mercavine-outreach@mail.grokbot.com.
 
 Thank you,
-Joe Perez
-CEO, Mercavine
+Mercavine, operated by Mobi Media Inc.
